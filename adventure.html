@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mode Aventure - Pocket Sim</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="adventure.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+    <div class="bg-gradient"></div>
+    <div class="map-grid"></div> <header class="adv-header">
+        <div class="header-left">
+            <h1>REGION DE <span class="text-accent">KANTO</span></h1>
+            <div class="badges-row" id="badges-container">
+                </div>
+        </div>
+        <div class="user-power">
+            <span>PUISSANCE DE COLLECTION</span>
+            <strong id="collection-power">0</strong>
+        </div>
+    </header>
+
+    <main class="map-container">
+        <div class="map-path">
+            <svg width="100%" height="100%">
+                <path d="M100 400 L250 300 L400 350 L550 200 L700 300 L850 400 L700 550 L400 550 Z" 
+                      fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="4" stroke-dasharray="10"/>
+            </svg>
+        </div>
+
+        <div class="gym-node" id="gym-1" style="top: 70%; left: 10%;" onclick="openGym(1)">
+            <div class="gym-icon">🪨</div>
+            <span class="gym-name">ARGENTA</span>
+        </div>
+        
+        <div class="gym-node locked" id="gym-2" style="top: 50%; left: 25%;" onclick="openGym(2)">
+            <div class="gym-icon">💧</div>
+            <span class="gym-name">AZURIA</span>
+        </div>
+
+        <div class="gym-node locked" id="gym-3" style="top: 60%; left: 40%;" onclick="openGym(3)">
+            <div class="gym-icon">⚡</div>
+            <span class="gym-name">CARMIN</span>
+        </div>
+
+        <div class="gym-node locked" id="gym-4" style="top: 35%; left: 55%;" onclick="openGym(4)">
+            <div class="gym-icon">🌿</div>
+            <span class="gym-name">CELADOPOLE</span>
+        </div>
+
+        <div class="gym-node locked" id="gym-5" style="top: 50%; left: 70%;" onclick="openGym(5)">
+            <div class="gym-icon">🔮</div>
+            <span class="gym-name">SAFRANIA</span>
+        </div>
+
+        <div class="gym-node locked" id="gym-6" style="top: 70%; left: 85%;" onclick="openGym(6)">
+            <div class="gym-icon">🔥</div>
+            <span class="gym-name">CRAMOIS'ÎLE</span>
+        </div>
+
+        <div class="gym-node locked boss-node" id="gym-8" style="top: 15%; left: 50%;" onclick="openGym(8)">
+            <div class="gym-icon">👑</div>
+            <span class="gym-name">LIGUE POKÉMON</span>
+        </div>
+    </main>
+
+    <div id="gym-overlay" class="overlay hidden">
+        <div class="overlay-glass gym-glass">
+            <header class="overlay-header">
+                <h2 id="modal-gym-name">ARÈNE</h2>
+                <button class="btn-close" onclick="closeGym()">&times;</button>
+            </header>
+            
+            <div class="gym-content">
+                <div class="gym-master">
+                    <div class="master-avatar" id="modal-gym-avatar">👤</div>
+                    <h3 id="modal-master-name">Pierre</h3>
+                    <p class="master-quote" id="modal-master-quote">"Ta collection est-elle aussi dure que la pierre ?"</p>
+                </div>
+
+                <div class="gym-requirements">
+                    <h4>PRÉREQUIS D'ENTRÉE</h4>
+                    <ul id="modal-req-list">
+                        </ul>
+                    <div class="reward-box">
+                        <span>RÉCOMPENSE :</span>
+                        <strong id="modal-reward-text" style="color:var(--gold)">Badge Roche (-5% Prix Boosters)</strong>
+                    </div>
+                </div>
+            </div>
+
+            <div class="gym-actions">
+                <button id="btn-challenge" class="btn-primary" onclick="startChallenge()">DÉFIER LE CHAMPION</button>
+                <div id="challenge-msg" class="error-msg"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="adventure.js"></script>
+</body>
+</html>

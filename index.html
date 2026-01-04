@@ -105,6 +105,25 @@
             </div>
         </aside>
 
+        <button onclick="window.open('adventure.html', '_blank')" class="adventure-access-btn">
+            <div class="adventure-icon">🗺️</div>
+            <div class="adventure-text">
+                <span>MODE AVENTURE</span>
+                <small>Conquérir la région</small>
+            </div>
+        </button>
+
+
+
+        <button onclick="window.open('colosseum.html', '_blank')" class="adventure-access-btn colosseum-access-btn">
+            <div class="adventure-icon">⚔️</div>
+            <div class="adventure-text">
+                <span>COLISÉE</span>
+                <small>Ligues & Tournois</small>
+            </div>
+        </button>
+
+        
         <main class="stage">
             
             <div class="currency-box">
@@ -134,7 +153,7 @@
                         <div class="booster-flash"></div>
                     </div>
                     <div class="booster-price-tag">
-                        COÛT: 100 ©
+                        COÛT: 10 ©
                     </div>
                     <div class="tap-hint">TOUCHER POUR OUVRIR (+10 XP)</div>
                 </div>
@@ -146,7 +165,7 @@
                 
                 <div class="actions">
                     <button id="btn-next" class="btn-primary hidden" onclick="startOpeningSequence()">
-                        OUVRIR UN AUTRE (-100©)
+                        OUVRIR UN AUTRE (-10©)
                     </button>
                     <button id="btn-change" class="btn-secondary hidden" onclick="returnToBooster()">
                         RETOUR AU MENU

@@ -50,7 +50,7 @@ let preparedCards = [];
 let isGodPack = false;
 let totalGodPacks = parseInt(localStorage.getItem('totalGodPacks')) || 0;
 
-const BOOSTER_PRICE = 100;
+const BOOSTER_PRICE = 10;
 let boosterEnergy = parseInt(localStorage.getItem('boosterEnergy')) || 0;
 let isSetComplete = false;
 
@@ -515,27 +515,52 @@ function updateEnergyUI() {
     }
 }
 
+// Remplacer la fonction generateSidebar dans script.js
 function generateSidebar() {
     const container = document.getElementById('set-buttons-container');
     container.innerHTML = '';
     
     SETS.forEach(set => {
-        const btn = document.createElement('button');
-        btn.className = 'set-btn';
+        const btn = document.createElement('div'); // On change button en div pour plus de flexibilité
+        btn.className = 'set-card-btn'; // Nouvelle classe CSS
         btn.id = `btn-${set.id}`;
         
         const isLocked = userLevel < set.reqLevel;
 
+        // Calcul de la progression pour ce set
+        const setCardsInCollection = myCollection.filter(id => id.startsWith(set.apiId));
+        const uniqueInSet = new Set(setCardsInCollection).size;
+        const percent = Math.floor((uniqueInSet / set.count) * 100);
+
         if (isLocked) {
             btn.classList.add('locked');
-            btn.innerHTML = `${set.name} <span class="lock-icon">🔒 Lvl ${set.reqLevel}</span>`;
+            btn.innerHTML = `
+                <div class="set-card-img-wrapper">
+                    <img src="${set.img}" class="set-card-img grayscale">
+                </div>
+                <div class="set-card-info">
+                    <span class="set-name">${set.name}</span>
+                    <span class="lock-status">🔒 Niv. ${set.reqLevel}</span>
+                </div>
+            `;
         } else {
-            const uniqueCardsInSet = new Set(myCollection.filter(id => id.startsWith(set.apiId)));
-            const isCompleted = uniqueCardsInSet.size >= set.count;
-            btn.innerHTML = `${set.name} ${isCompleted ? '<span style="color: #10b981; float: right; font-weight: bold;">✓</span>' : ''}`;
+            const isCompleted = uniqueInSet >= set.count;
+            btn.innerHTML = `
+                <div class="set-card-img-wrapper">
+                    <img src="${set.img}" class="set-card-img">
+                </div>
+                <div class="set-card-info">
+                    <span class="set-name">${set.name} ${isCompleted ? '⭐' : ''}</span>
+                    <div class="mini-progress-track">
+                        <div class="mini-progress-fill" style="width: ${percent}%"></div>
+                    </div>
+                    <span class="mini-progress-text">${uniqueInSet}/${set.count} (${percent}%)</span>
+                </div>
+            `;
 
             btn.onclick = () => {
                 loadSet(set.id);
+                // Gestion mobile
                 if(window.innerWidth < 768) toggleSidebar();
             };
         }
@@ -799,7 +824,7 @@ function startOpeningSequence() {
     totalBoosters++;
     localStorage.setItem('totalBoosters', totalBoosters);
     updateCounters();
-    gainXP(10);
+    gainXP(20);
     prepareAndPreload(); 
     
     const booster = document.querySelector('.booster-container');
@@ -873,6 +898,7 @@ function performDraw() {
             myCollection.push(cardData.id);
             saveData();
             updateStats();
+            generateSidebar();
 
             shopCards = shopCards.filter(c => c.id !== cardData.id);
             if (!document.getElementById('shop-overlay').classList.contains('hidden')) renderShop();
@@ -1177,4 +1203,11 @@ function launchGodConfetti() {
 }
 function toggleRightSidebar() {
     document.getElementById('right-sidebar').classList.toggle('open');
+}
+
+// Dans script.js du jeu principal
+const badges = JSON.parse(localStorage.getItem('adventureBadges')) || [];
+let currentBoosterPrice = 100;
+if(badges.includes('badge_foudre')) {
+    currentBoosterPrice = 90; // Bonus appliqué !
 }

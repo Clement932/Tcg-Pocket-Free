@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Le Colisée des Légendes</title>
+    <link rel="stylesheet" href="style.css"> <link rel="stylesheet" href="colosseum.css"> <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;700;900&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="bg-gradient" style="background: radial-gradient(circle at 50% 50%, #2e1065 0%, #020617 80%);"></div>
+    
+    <div class="arena-layout">
+        <header class="arena-header">
+            <div class="header-left">
+                <h1>COLISÉE <span class="text-danger">OMEGA</span></h1>
+                <p>LIGUE ACTUELLE : <span id="current-league" class="league-badge">BRONZE I</span></p>
+            </div>
+            <button onclick="window.close()" class="btn-exit">QUITTER L'ARÈNE</button>
+        </header>
+
+        <main id="view-lobby" class="arena-view active">
+            <div class="lobby-container">
+                <div class="team-builder">
+                    <h2>CONSTITUEZ VOTRE ÉQUIPE (3 CARTES)</h2>
+                    <div class="slots-container">
+                        <div class="team-slot empty" onclick="selectSlot(0)" id="slot-0"><span>+</span></div>
+                        <div class="team-slot empty" onclick="selectSlot(1)" id="slot-1"><span>+</span></div>
+                        <div class="team-slot empty" onclick="selectSlot(2)" id="slot-2"><span>+</span></div>
+                    </div>
+                    <div class="team-stats">
+                        <div>PUISSANCE TOTALE : <span id="team-power">0</span></div>
+                        <button id="btn-start-fight" class="btn-fight disabled" onclick="startCombat()" disabled>LANCER LE COMBAT</button>
+                    </div>
+                </div>
+
+                <div class="collection-picker">
+                    <h3>VOTRE COLLECTION</h3>
+                    <div id="picker-grid" class="picker-grid"></div>
+                </div>
+            </div>
+        </main>
+
+        <main id="view-battle" class="arena-view hidden">
+            <div class="battlefield">
+                <div class="side enemy-side">
+                    <div class="fighter-card" id="enemy-fighter">
+                        <div class="hp-bar-container"><div class="hp-fill" id="enemy-hp" style="width: 100%"></div></div>   
+                            <img id="enemy-img" src="" class="fighter-img" onerror="this.src='https://tcg.pokemon.com/assets/img/global/tcg-card-back-2x.jpg'">                        <div class="damage-text" id="enemy-dmg"></div>
+                    </div>
+                    <div class="reserve-row" id="enemy-reserve"></div>
+                </div>
+
+                <div class="vs-divider">VS</div>
+
+                <div class="side player-side">
+                    <div class="fighter-card" id="player-fighter">
+                        <div class="damage-text" id="player-dmg"></div>
+                        <img id="player-img" src="" class="fighter-img" onerror="this.src='https://tcg.pokemon.com/assets/img/global/tcg-card-back-2x.jpg'">
+                        <div class="hp-bar-container"><div class="hp-fill" id="player-hp" style="width: 100%"></div></div>
+                    </div>
+                    <div class="reserve-row" id="player-reserve"></div>
+                </div>
+            </div>
+            
+            <div class="battle-log" id="battle-log">Le combat commence...</div>
+        </main>
+
+        <div id="result-overlay" class="overlay hidden">
+            <div class="result-box">
+                <h1 id="result-title">VICTOIRE !</h1>
+                <div id="result-rewards">
+                    <p>+200 XP</p>
+                    <p>+150 Crédits</p>
+                </div>
+                <button onclick="returnToLobby()" class="btn-primary">CONTINUER</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="colosseum.js"></script>
+</body>
+</html>

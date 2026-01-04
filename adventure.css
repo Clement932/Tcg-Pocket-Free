@@ -1,0 +1,85 @@
+/* --- STYLE SPÉCIFIQUE AVENTURE --- */
+
+body { overflow: hidden; background: #020617; }
+
+/* Grille de fond style "Tron" */
+.map-grid {
+    position: fixed; inset: 0; z-index: -1;
+    background-image: linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    background-size: 50px 50px;
+    transform: perspective(500px) rotateX(20deg);
+    transform-origin: center 80%;
+    opacity: 0.5;
+}
+
+.adv-header {
+    position: absolute; top: 0; left: 0; width: 100%;
+    padding: 20px 40px; display: flex; justify-content: space-between; align-items: flex-start;
+    z-index: 10; background: linear-gradient(180deg, rgba(2,6,23,0.9), transparent);
+}
+
+.user-power {
+    text-align: right;
+    background: rgba(16, 185, 129, 0.1); border: 1px solid var(--accent);
+    padding: 10px 20px; border-radius: 12px;
+}
+.user-power strong { font-family: var(--font-tech); font-size: 24px; color: var(--accent); display: block; }
+
+.badges-row { display: flex; gap: 10px; margin-top: 10px; min-height: 30px; }
+.badge-slot { 
+    width: 30px; height: 30px; border-radius: 50%; 
+    background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); 
+    display: flex; align-items: center; justify-content: center; font-size: 14px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.5);
+}
+.badge-slot.earned { box-shadow: 0 0 15px var(--gold); border-color: var(--gold); animation: popIn 0.5s; }
+
+/* Carte */
+.map-container { width: 100%; height: 100vh; position: relative; }
+.map-path { position: absolute; inset: 0; pointer-events: none; opacity: 0.5; }
+
+.gym-node {
+    position: absolute; transform: translate(-50%, -50%);
+    display: flex; flex-direction: column; align-items: center; gap: 5px;
+    cursor: pointer; transition: 0.3s;
+}
+
+.gym-icon {
+    width: 60px; height: 60px; background: #1e293b;
+    border: 2px solid var(--primary); border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px; color: white; box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+    z-index: 5; transition: 0.3s;
+}
+
+.gym-node:hover .gym-icon { transform: scale(1.2); border-color: var(--gold); background: #334155; }
+.gym-name { 
+    background: rgba(0,0,0,0.8); padding: 2px 8px; border-radius: 4px; 
+    font-size: 12px; font-weight: bold; letter-spacing: 1px;
+}
+
+.gym-node.locked { filter: grayscale(1); opacity: 0.6; cursor: not-allowed; }
+.gym-node.locked .gym-icon { border-color: #555; box-shadow: none; }
+.gym-node.completed .gym-icon { border-color: var(--accent); box-shadow: 0 0 20px var(--accent); color: var(--accent); }
+
+.boss-node .gym-icon { width: 80px; height: 80px; border-color: #ef4444; font-size: 40px; animation: pulse 2s infinite; }
+
+/* Modal Arène */
+.gym-glass { max-width: 600px; height: auto; padding: 0; }
+.gym-content { padding: 30px; display: flex; gap: 30px; align-items: center; }
+.master-avatar { width: 80px; height: 80px; background: #333; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 40px; margin: 0 auto 10px; border: 2px solid white; }
+.gym-master { text-align: center; width: 40%; border-right: 1px solid var(--border); padding-right: 20px; }
+.master-quote { font-style: italic; color: var(--text-muted); font-size: 12px; margin-top: 10px; }
+.gym-requirements { flex: 1; }
+.gym-requirements ul { padding-left: 20px; color: var(--text-main); font-size: 14px; line-height: 1.6; }
+.gym-requirements li.ok { color: var(--accent); }
+.gym-requirements li.nok { color: var(--locked); }
+
+.gym-actions { padding: 20px; background: rgba(0,0,0,0.2); text-align: center; border-top: 1px solid var(--border); }
+.error-msg { color: var(--locked); font-size: 12px; margin-top: 10px; min-height: 15px; }
+
+@media (max-width: 768px) {
+    .gym-content { flex-direction: column; text-align: center; }
+    .gym-master { width: 100%; border-right: none; border-bottom: 1px solid var(--border); padding-bottom: 20px; padding-right: 0; }
+}
