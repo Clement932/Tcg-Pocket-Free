@@ -293,7 +293,7 @@ function addMoney(amount) {
 
 function prepareAndPreload() {
     preparedCards = [];
-    isGodPack = Math.random() < 0.005; 
+    isGodPack = Math.random() < 0.05; 
 
     if (isGodPack) {
         const godTierCards = dbCards.filter(c => c.weight <= 15);
@@ -721,3 +721,4 @@ function launchGodConfetti() {
     }
 
 }
+
