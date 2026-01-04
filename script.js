@@ -331,7 +331,7 @@ function startOpeningSequence() {
     updateCounters();
     
     // Gain d'XP à l'ouverture
-    gainXP(10);
+    gainXP(20);
 
     prepareAndPreload(); 
     
@@ -719,4 +719,5 @@ function launchGodConfetti() {
         container.appendChild(p);
         setTimeout(() => p.remove(), duration * 1000);
     }
+
 }
