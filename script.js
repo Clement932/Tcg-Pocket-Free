@@ -404,6 +404,14 @@ function performDraw() {
             myCollection.push(cardData.id);
             saveData();
             updateStats();
+
+            shopCards = shopCards.filter(c => c.id !== cardData.id);
+
+            // Si l'overlay du shop est visible, on rafraîchit l'affichage immédiatement
+            if (!document.getElementById('shop-overlay').classList.contains('hidden')) {
+                renderShop();
+            }
+
             document.getElementById('album-content').innerHTML = '';
 
             if(isRare) {
