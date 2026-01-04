@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Pocket Sim Deluxe</title>
     <link rel="stylesheet" href="style.css">
-    <link rel="preconnect" href="https://www.media.pokekalos.fr">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
@@ -13,6 +12,8 @@
     <div class="bg-gradient"></div>
     <div class="bg-noise"></div>
     <div id="particles-container"></div> 
+    
+    <div id="toast-container"></div>
     
     <button id="mobile-menu-btn" onclick="toggleSidebar()">☰</button>
 
@@ -27,8 +28,8 @@
             <div class="booster-stats-box">
                 <div class="level-row">
                     <div class="level-info">
-                        <span class="stat-label">NIVEAU</span>
-                        <span id="user-level" class="level-val">1</span>
+                        <span class="stat-label">NIVEAU <span id="user-level" class="level-val">1</span></span>
+                        <span class="stat-label rank-label">RANG: <span id="collection-rank" style="color:var(--gold)">Novice</span></span>
                     </div>
                     <div class="xp-track">
                         <div id="xp-bar" class="xp-fill"></div>
@@ -38,23 +39,40 @@
 
                 <div class="stats-divider"></div>
 
-                <div class="counters-row">
-                    <div class="stat-item">
-                        <span class="stat-label">SESSION</span>
-                        <span id="session-count" class="stat-value">0</span>
-                    </div>
-                    <div class="stat-separator"></div>
-                    <div class="stat-item">
-                        <span class="stat-label">TOTAL</span>
-                        <span id="total-count" class="stat-value">0</span>
-                    </div>
+                <div class="mini-missions">
+                    <div class="nav-label" style="margin-bottom:8px;">MISSIONS DU JOUR</div>
+                    <div id="mini-missions-list">
+                        </div>
                 </div>
             </div>
 
-            <button class="shop-btn-sidebar" onclick="toggleShop()">
-                <span class="shop-icon">🛒</span> BOUTIQUE DU SET
-                <span class="shop-timer-badge" id="sidebar-shop-timer">02:00</span>
-            </button>
+            <div class="sidebar-actions">
+                <button class="shop-btn-sidebar" onclick="toggleShop()">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <span class="shop-icon">🛒</span> BOUTIQUE
+                    </div>
+                    <span class="shop-timer-badge" id="sidebar-shop-timer">00:00</span>
+                </button>
+
+                <button class="shop-btn-sidebar craft-btn" onclick="toggleCraft()">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <span class="shop-icon">🧪</span> LABO
+                    </div>
+                </button>
+
+                <button class="shop-btn-sidebar stats-btn" onclick="toggleProfile()">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <span class="shop-icon">💾</span> PROFIL & SAVE
+                    </div>
+                </button>
+
+                <button class="shop-btn-sidebar achievement-btn" onclick="toggleAchievements()">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <span class="shop-icon">🏆</span> SUCCÈS
+                    </div>
+                    <span class="shop-timer-badge" id="achievements-badge">0/10</span>
+                </button>
+            </div>
 
             <div class="nav-scroll">
                 <div class="nav-label">SÉLECTION DU BOOSTER</div>
@@ -63,7 +81,7 @@
 
             <div class="user-stats" onclick="toggleAlbum()">
                 <div class="stats-row">
-                    <span class="stats-label">TOTAL GLOBAL</span>
+                    <span class="stats-label">COLLECTION</span>
                     <span id="collection-percent" class="stats-value">0%</span>
                 </div>
                 <div class="progress-track">
@@ -72,10 +90,6 @@
                 <div class="stats-footer">
                     <small id="collection-count">0 / 0 cartes</small>
                     <span class="open-album-hint">OUVRIR L'ALBUM</span>
-                </div>
-                <div class="god-pack-counter" style="margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
-                    <span class="stat-label" style="color: var(--gold); font-size: 10px;">GOD PACKS</span>
-                    <span id="god-pack-count" style="color: var(--gold); font-family: var(--font-tech); font-size: 16px; font-weight: 700; text-shadow: 0 0 10px rgba(251, 191, 36, 0.4);">0</span>
                 </div>
             </div>
         </aside>
@@ -105,7 +119,10 @@
                         <img id="booster-img" src="" alt="Booster Pack">
                         <div class="booster-flash"></div>
                     </div>
-                    <div class="tap-hint">TOUCHER POUR OUVRIR (+10 XP)</div>
+                    <div class="price-tag-container">
+                        <div class="price-tag">COÛT : <span id="booster-cost">100</span> ©</div>
+                        <div class="tap-hint">TOUCHER POUR OUVRIR (+15 XP)</div>
+                    </div>
                 </div>
                 <h2 id="booster-set-title" class="set-title">Chargement...</h2>
             </section>
@@ -114,8 +131,8 @@
                 <div id="cards-grid"></div>
                 
                 <div class="actions">
-                    <button id="btn-next" class="btn-primary hidden" onclick="startOpeningSequence()">
-                        OUVRIR UN AUTRE
+                    <button id="btn-next" class="btn-primary hidden" onclick="resetForNewPack()">
+                        OUVRIR UN AUTRE (-100©)
                     </button>
                     <button id="btn-change" class="btn-secondary hidden" onclick="returnToBooster()">
                         RETOUR AU MENU
@@ -125,10 +142,6 @@
 
         </main>
     </div>
-
-    <button class="btn-reset" onclick="confirmReset()" title="Réinitialiser la collection">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 12"/></svg>
-    </button>
 
     <div id="album-overlay" class="overlay hidden">
         <div class="overlay-glass">
@@ -143,7 +156,7 @@
                 </div>
                 <div class="header-right" style="display:flex; align-items:center; gap:20px;">
                     <button class="btn-sell-dupes" onclick="sellDuplicates()">
-                        VENDRE DOUBLONS
+                        VENDRE TOUS LES DOUBLONS
                     </button>
                     <button class="btn-close" onclick="toggleAlbum()">&times;</button>
                 </div>  
@@ -156,9 +169,9 @@
         <div class="overlay-glass shop-glass">
             <header class="overlay-header">
                 <div class="header-left">
-                    <h2>BOUTIQUE ÉPHÉMÈRE</h2>
+                    <h2>BOUTIQUE</h2>
                     <div class="shop-timer-container">
-                        Actualisation dans : <span id="shop-countdown">02:00</span>
+                        Reset : <span id="shop-countdown">00:00</span>
                     </div>
                 </div>
                 <div class="header-right">
@@ -167,10 +180,79 @@
                 </div>
             </header>
             <div class="shop-info-bar">
-                Cartes manquantes du set actuel uniquement.
+                <span id="shop-message">Cartes à l'unité.</span>
                 <button class="btn-refresh-shop" onclick="forceShopRefresh()">Actualiser (50©)</button>
             </div>
             <div id="shop-content" class="overlay-scroll shop-grid"></div>
+        </div>
+    </div>
+
+    <div id="achievements-overlay" class="overlay hidden">
+        <div class="overlay-glass">
+            <header class="overlay-header">
+                <div class="header-left">
+                    <h2>SUCCÈS</h2>
+                </div>
+                <div class="header-right">
+                    <button class="btn-close" onclick="toggleAchievements()">&times;</button>
+                </div>
+            </header>
+            <div id="achievements-content" class="overlay-scroll achievements-grid"></div>
+        </div>
+    </div>
+
+    <div id="craft-overlay" class="overlay hidden">
+        <div class="overlay-glass">
+            <header class="overlay-header">
+                <h2>LABORATOIRE DE FUSION</h2>
+                <button class="btn-close" onclick="toggleCraft()">&times;</button>
+            </header>
+            <div class="craft-container">
+                <div class="craft-panel">
+                    <h3>RECYCLAGE MOLECULAIRE</h3>
+                    <p>Fusionnez 5 cartes COMMUNES pour obtenir 1 carte RARE aléatoire.</p>
+                    <div class="craft-visual">
+                        <div class="card-stack">5x <span style="color:var(--c-common)">Commune</span></div>
+                        <div class="arrow">➜</div>
+                        <div class="card-result">1x <span style="color:var(--c-rare)">Rare</span></div>
+                    </div>
+                    <button id="btn-craft" class="btn-primary" onclick="craftCards()">LANCER LA FUSION</button>
+                    <p id="craft-msg" style="margin-top:15px; font-size:12px; color:#aaa;"></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="profile-overlay" class="overlay hidden">
+        <div class="overlay-glass" style="max-width:600px; height:auto; max-height:90vh;">
+            <header class="overlay-header">
+                <h2>PROFIL & DONNÉES</h2>
+                <button class="btn-close" onclick="toggleProfile()">&times;</button>
+            </header>
+            <div class="overlay-scroll" style="padding:30px; text-align:center;">
+                <div class="stats-grid-profile">
+                    <div class="stat-box">
+                        <div class="label">Valeur Collection</div>
+                        <div class="value" id="profile-value">0 pts</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="label">Boosters Ouverts</div>
+                        <div class="value" id="profile-opened">0</div>
+                    </div>
+                </div>
+
+                <hr style="border-color:var(--border); margin:20px 0; opacity:0.3;">
+
+                <h3>SAUVEGARDE / TRANSFERT</h3>
+                <p style="font-size:12px; color:#aaa; margin-bottom:10px;">Copiez ce code pour transférer votre partie sur un autre appareil.</p>
+                <textarea id="save-data-area" readonly onclick="this.select()"></textarea>
+                
+                <div class="save-actions">
+                    <button class="btn-secondary" onclick="exportSave()">COPIER LE CODE</button>
+                    <button class="btn-secondary" onclick="importSave()">IMPORTER LE CODE</button>
+                    <button class="btn-reset-full" onclick="confirmReset()">RÉINITIALISER TOUT</button>
+                </div>
+            </div>
         </div>
     </div>
 

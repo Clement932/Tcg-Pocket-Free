@@ -17,335 +17,182 @@ const SETS = [
     { id: 'pocket-promo-b', name: "PROMO - B", apiId: 'promo-b', count: 24, img: 'Booster Pack15.webp', reqLevel: 40 },
 ];
 
+const RARITIES = {
+    COMMON: { id: 'C', weight: 100, price: 10, color: '#64748b' },
+    RARE: { id: 'R', weight: 40, price: 50, color: '#3b82f6' },
+    ULTRA_RARE: { id: 'UR', weight: 15, price: 250, color: '#a855f7' },
+    SECRET: { id: 'SAR', weight: 5, price: 1000, color: '#fbbf24' }
+};
+
+const RANKS = [
+    { name: "Novice", val: 0 },
+    { name: "Collectionneur", val: 5000 },
+    { name: "Expert", val: 20000 },
+    { name: "Maître", val: 100000 },
+    { name: "Légende", val: 500000 }
+];
+
+const AUDIO = {
+    open: new Audio('https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3'),
+    flip: new Audio('https://assets.mixkit.co/active_storage/sfx/2019/2019-preview.mp3'),
+    rare: new Audio('https://assets.mixkit.co/active_storage/sfx/95/95-preview.mp3'),
+    sell: new Audio('https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3'),
+    playSound: (key) => {
+        const sound = AUDIO[key];
+        if(sound) {
+            sound.currentTime = 0;
+            sound.play().catch(e => console.log("Audio autoplay blocked", e));
+        }
+    }
+};
+
+const ACHIEVEMENTS = [
+    { id: 'first_open', name: "Premier Pas", icon: "📦", desc: "Ouvrir votre premier booster", reward: 50, condition: (s) => s.totalBoosters >= 1 },
+    { id: 'collector_10', name: "Débutant", icon: "🃏", desc: "Avoir 10 cartes uniques", reward: 100, condition: (s) => s.uniqueCards >= 10 },
+    { id: 'collector_100', name: "Passionné", icon: "📚", desc: "Avoir 100 cartes uniques", reward: 500, condition: (s) => s.uniqueCards >= 100 },
+    { id: 'money_1000', name: "Entrepreneur", icon: "💰", desc: "Posséder 1000 Crédits", reward: 200, condition: (s) => s.money >= 1000 },
+    { id: 'level_5', name: "Niveau 5", icon: "⭐", desc: "Atteindre le niveau 5", reward: 300, condition: (s) => s.level >= 5 },
+    { id: 'god_pack', name: "Béni des Dieux", icon: "⚡", desc: "Trouver un GOD PACK", reward: 1000, condition: (s) => s.godPacks >= 1 },
+    { id: 'secret_hunter', name: "Chasseur de Trésor", icon: "💎", desc: "Trouver une carte Secrète (SAR)", reward: 1500, condition: (s) => s.secretsFound >= 1 },
+    { id: 'shop_spender', name: "Client Fidèle", icon: "🛒", desc: "Dépenser 500 Crédits au total", reward: 250, condition: (s) => s.spentMoney >= 500 }
+];
+
+// --- STATE ---
 let currentSet = SETS[0];
 let dbCards = []; 
 let myCollection = JSON.parse(localStorage.getItem('tcgCollection')) || [];
+let unlockedAchievements = JSON.parse(localStorage.getItem('unlockedAchievements')) || [];
+let gameStats = JSON.parse(localStorage.getItem('gameStats')) || {
+    totalBoosters: 0,
+    money: 500, // Bonus de départ
+    level: 1,
+    xp: 0,
+    godPacks: 0,
+    secretsFound: 0,
+    spentMoney: 0
+};
+
+
+let activeMissions = JSON.parse(localStorage.getItem('activeMissions')) || [];
+let lastDailyReset = localStorage.getItem('lastDailyReset');
+
 let currentFilter = 'all';
 let preparedCards = [];
 let isGodPack = false;
-let totalGodPacks = parseInt(localStorage.getItem('totalGodPacks')) || 0;
-
-// --- SHOP VARIABLES ---
-let shopCards = []; // Liste des cartes actuellement dans la boutique
+let shopCards = []; 
 let shopRefreshTimer = null;
-const SHOP_REFRESH_TIME = 120; // 2 minutes en secondes
-let currentShopTime = SHOP_REFRESH_TIME;
-
-// --- NOUVEAUX COMPTEURS & ARGENT & LEVEL ---
-let totalBoosters = parseInt(localStorage.getItem('totalBoosters')) || 0;
+const SHOP_REFRESH_TIME = 120;
 let sessionBoosters = 0;
-let userMoney = parseInt(localStorage.getItem('userMoney')) || 0;
-
-// Variables de niveau
-let userLevel = parseInt(localStorage.getItem('userLevel')) || 1;
-let userXP = parseInt(localStorage.getItem('userXP')) || 0;
+let isOpening = false;
 
 document.addEventListener('DOMContentLoaded', () => {
+    checkDailyReset();
     generateSidebar();
     loadSet(currentSet.id);
     updateCounters(); 
     updateMoneyUI();
     updateLevelUI(); 
+    loadShopFromStorage();
     startShopTimer();
     updateGodPackUI();
+    checkAchievements();
+    renderMissions();
     
     document.querySelector('.stage').addEventListener('click', () => {
         document.getElementById('sidebar').classList.remove('open');
     });
 });
 
-function updateGodPackUI() {
-    document.getElementById('god-pack-count').innerText = totalGodPacks;
-}
-// --- GESTION DES SETS ---
-function generateSidebar() {
-    const container = document.getElementById('set-buttons-container');
-    container.innerHTML = '';
-    
-    SETS.forEach(set => {
-        const btn = document.createElement('button');
-        btn.className = 'set-btn';
-        btn.id = `btn-${set.id}`;
-        
-        // Rétablir l'état "active" si c'est le set en cours
-        if (currentSet && set.id === currentSet.id) {
-            btn.classList.add('active');
-        }
-        
-        const isLocked = userLevel < set.reqLevel;
-
-        if (isLocked) {
-            btn.classList.add('locked');
-            btn.innerHTML = `${set.name} <span class="lock-icon">🔒 Lvl ${set.reqLevel}</span>`;
-        } else {
-            // Logique de vérification de complétion
-            const uniqueCardsInSet = new Set(myCollection.filter(id => id.startsWith(set.apiId)));
-            const isCompleted = uniqueCardsInSet.size >= set.count;
-            btn.innerHTML = `${set.name} ${isCompleted ? '<span style="color: #10b981; float: right; font-weight: bold;">✓</span>' : ''}`;
-
-            btn.onclick = () => {
-                loadSet(set.id);
-                if(window.innerWidth < 768) toggleSidebar();
-            };
-        }
-        container.appendChild(btn);
-    });
-}
-
-function loadSet(setId) {
-    document.querySelectorAll('.set-btn').forEach(b => b.classList.remove('active'));
-    const btn = document.getElementById(`btn-${setId}`);
-    if(btn) btn.classList.add('active');
-    
-    currentSet = SETS.find(s => s.id === setId);
-
-    document.getElementById('booster-set-title').innerText = currentSet.name;
-    document.getElementById('hud-set-title').innerText = currentSet.name;
-    
-    const imgBooster = document.getElementById('booster-img');
-    imgBooster.src = currentSet.img;
-    imgBooster.onerror = () => { imgBooster.src = 'https://tcg.pokemon.com/assets/img/global/tcg-card-back-2x.jpg'; };
-    
-    dbCards = [];
-    for (let i = 1; i <= currentSet.count; i++) {
-        const paddedId = i.toString().padStart(3, '0'); 
-        let weight = 100; 
-        
-        if (i > currentSet.count * 0.95) weight = 5;       
-        else if (i > currentSet.count * 0.85) weight = 15; 
-        else if (i > currentSet.count * 0.65) weight = 40; 
-        else if (i > currentSet.count * 0.40) weight = 80; 
-
-        dbCards.push({
-            id: `${currentSet.apiId}-${paddedId}`,
-            localId: paddedId,
-            imgUrl: `img/${currentSet.apiId}/${i}.png`,
-            weight: weight
-        });
-    }
-
-    // Régénérer le shop quand on change de set
-    generateShopCards();
-    updateStats();
-    document.querySelector('.top-hud').classList.add('visible');
-}
-
-// --- GESTION XP DYNAMIQUE ---
-// Formule: 1->500, 2->600, 3->700... (Level-1)*100 + 500
-function getRequiredXP(level) {
-    return 500 + ((level - 1) * 100);
-}
-
-function gainXP(amount) {
-    userXP += amount;
-    let reqXP = getRequiredXP(userLevel);
-
-    if(userXP >= reqXP) {
-        userLevel++;
-        userXP = userXP - reqXP; 
-        alert(`NIVEAU SUPÉRIEUR ! Vous êtes maintenant niveau ${userLevel} !`);
-        localStorage.setItem('userLevel', userLevel);
-        generateSidebar();
-        const currentBtn = document.getElementById(`btn-${currentSet.id}`);
-        if(currentBtn) currentBtn.classList.add('active');
-    }
-    
-    localStorage.setItem('userXP', userXP);
+// --- CORE LOGIC ---
+function saveData() {
+    localStorage.setItem('tcgCollection', JSON.stringify(myCollection));
+    localStorage.setItem('unlockedAchievements', JSON.stringify(unlockedAchievements));
+    localStorage.setItem('gameStats', JSON.stringify(gameStats));
+    localStorage.setItem('activeMissions', JSON.stringify(activeMissions));
+    // Synchro sidebar si nécessaire
     updateLevelUI();
+    updateCounters();
 }
 
-function updateLevelUI() {
-    const reqXP = getRequiredXP(userLevel);
-    document.getElementById('user-level').innerText = userLevel;
-    const percent = Math.floor((userXP / reqXP) * 100);
-    document.getElementById('xp-bar').style.width = `${percent}%`;
-    document.getElementById('xp-text').innerText = `${userXP} / ${reqXP} XP`;
-}
-
-// --- GESTION BOUTIQUE (SHOP) ---
-function toggleShop() {
-    const shop = document.getElementById('shop-overlay');
-    if(shop.classList.contains('hidden')) {
-        renderShop();
-        shop.classList.remove('hidden');
-    } else {
-        shop.classList.add('hidden');
-    }
-}
-
-function startShopTimer() {
-    if(shopRefreshTimer) clearInterval(shopRefreshTimer);
-    shopRefreshTimer = setInterval(() => {
-        currentShopTime--;
+// --- MISSIONS JOURNALIÈRES ---
+function checkDailyReset() {
+    const today = new Date().toDateString();
+    if(lastDailyReset !== today) {
+        // Modèles de missions
+        const templates = [
+            { type: 'OPEN_BOOSTER', label: "Ouvrir 3 Boosters", target: 3, reward: 150 },
+            { type: 'EARN_MONEY', label: "Gagner 200 Crédits", target: 200, reward: 50 },
+            { type: 'CRAFT', label: "Faire 1 Fusion", target: 1, reward: 100 },
+            { type: 'FIND_RARE', label: "Trouver 2 Rares", target: 2, reward: 120 }
+        ];
         
-        // Formattage MM:SS
-        const minutes = Math.floor(currentShopTime / 60).toString().padStart(2, '0');
-        const seconds = (currentShopTime % 60).toString().padStart(2, '0');
-        const timeStr = `${minutes}:${seconds}`;
-
-        document.getElementById('shop-countdown').innerText = timeStr;
-        document.getElementById('sidebar-shop-timer').innerText = timeStr;
-
-        if(currentShopTime <= 0) {
-            generateShopCards();
-            if(!document.getElementById('shop-overlay').classList.contains('hidden')){
-                renderShop(); // Refresh visuel si ouvert
-            }
-        }
-    }, 1000);
-}
-
-function generateShopCards() {
-    currentShopTime = SHOP_REFRESH_TIME;
-    shopCards = [];
-    
-    // Filtre : Uniquement cartes du set actuel que je ne possède PAS
-    const missingCards = dbCards.filter(card => !myCollection.includes(card.id));
-    
-    if(missingCards.length === 0) {
-        shopCards = [];
-        return;
-    }
-
-    // Mélanger et prendre 10
-    const shuffled = [...missingCards].sort(() => 0.5 - Math.random());
-    const selected = shuffled.slice(0, 10);
-
-    // Calculer le prix selon la rareté (poids)
-    // Plus le poids est bas (rare), plus c'est cher.
-    // Poids: 5 (Ultra Rare), 15 (Rare), 40, 80, 100 (Commun)
-    shopCards = selected.map(card => {
-        let price = 50; // Prix de base
-        if(card.weight <= 5) price = 2500;
-        else if(card.weight <= 15) price = 1000;
-        else if(card.weight <= 40) price = 400;
-        else if(card.weight <= 80) price = 150;
+        // Sélectionner 3 missions aléatoires
+        const shuffled = templates.sort(() => 0.5 - Math.random()).slice(0, 3);
+        activeMissions = shuffled.map(t => ({...t, progress: 0, claimed: false}));
         
-        return { ...card, price: price };
-    });
-}
-
-function renderShop() {
-    document.getElementById('shop-user-money').innerText = userMoney.toLocaleString();
-    const container = document.getElementById('shop-content');
-    container.innerHTML = '';
-
-    if(shopCards.length === 0) {
-        container.innerHTML = '<p style="text-align:center; width:100%; color:#aaa;">Aucune carte disponible ou vous avez complété ce set !</p>';
-        return;
-    }
-
-    shopCards.forEach(item => {
-        const div = document.createElement('div');
-        div.className = 'shop-card-wrapper';
-        div.innerHTML = `
-            <img src="${item.imgUrl}" class="shop-card-img" loading="lazy">
-            <div class="shop-price-tag">
-                <span>${item.price}</span> <span style="font-size:12px">©</span>
-            </div>
-            <button class="btn-buy-card" onclick="buyCard('${item.id}', ${item.price})">
-                ACHETER
-            </button>
-        `;
-        
-        // Désactiver si pas assez d'argent
-        if(userMoney < item.price) {
-            div.querySelector('button').disabled = true;
-            div.querySelector('button').innerText = "PAS ASSEZ";
-        }
-
-        container.appendChild(div);
-    });
-}
-
-function buyCard(cardId, price) {
-    if(userMoney >= price) {
-        addMoney(-price);
-        myCollection.push(cardId);
+        localStorage.setItem('lastDailyReset', today);
         saveData();
-        updateStats();
-        document.getElementById('album-content').innerHTML = '';        
-        // Retirer la carte du shop (visuellement et logiquement)
-        shopCards = shopCards.filter(c => c.id !== cardId);
-        renderShop();
-        
-        // Petit effet confetti localisé (optionnel, réutilise launchConfetti global)
-        launchConfetti();
+        showNotification("Nouvelle Journée", "Les missions sont réinitialisées !");
     }
 }
 
-function forceShopRefresh() {
-    if(userMoney >= 50) {
-        addMoney(-50);
-        generateShopCards();
-        renderShop();
-    } else {
-        alert("Pas assez d'argent pour actualiser !");
-    }
-}
-
-// --- UTILS & CORE ---
-function updateCounters() {
-    document.getElementById('session-count').innerText = sessionBoosters;
-    document.getElementById('total-count').innerText = totalBoosters;
-}
-
-function updateMoneyUI() {
-    document.getElementById('user-money').innerText = userMoney.toLocaleString();
-    const shopMoney = document.getElementById('shop-user-money');
-    if(shopMoney) shopMoney.innerText = userMoney.toLocaleString();
-}
-
-function addMoney(amount) {
-    userMoney += amount;
-    localStorage.setItem('userMoney', userMoney);
-    updateMoneyUI();
-}
-
-function prepareAndPreload() {
-    preparedCards = [];
-    isGodPack = Math.random() < 0.0005; 
-
-    if (isGodPack) {
-        totalGodPacks++;
-        localStorage.setItem('totalGodPacks', totalGodPacks);
-        updateGodPackUI();
-        const godTierCards = dbCards.filter(c => c.weight <= 15);
-        if (godTierCards.length < 5) {
-            isGodPack = false;
-            return prepareAndPreload();
-        }
-        for(let i = 0; i < 5; i++) {
-            preparedCards.push(godTierCards[Math.floor(Math.random() * godTierCards.length)]);
-        }
-    } else {
-        const totalWeight = dbCards.reduce((sum, c) => sum + c.weight, 0);
-        for(let i = 0; i < 5; i++) {
-            let randomNum = Math.random() * totalWeight;
-            let selected = dbCards[0];
-            for (const card of dbCards) {
-                if (randomNum < card.weight) { selected = card; break; }
-                randomNum -= card.weight;
+function checkMission(type, amount) {
+    let changed = false;
+    activeMissions.forEach(m => {
+        if(m.type === type && !m.claimed && m.progress < m.target) {
+            m.progress += amount;
+            if(m.progress >= m.target) {
+                m.progress = m.target;
+                m.claimed = true;
+                addMoney(m.reward);
+                showNotification("Mission Complétée !", `+${m.reward}©`);
             }
-            preparedCards.push(selected);
+            changed = true;
         }
-    }
-    preparedCards.forEach(card => {
-        const img = new Image();
-        img.src = card.imgUrl;
     });
+    if(changed) {
+        saveData();
+        renderMissions();
+    }
 }
 
+function renderMissions() {
+    const div = document.getElementById('mini-missions-list');
+    if(!activeMissions.length) {
+        div.innerHTML = '<div class="mission-item">Aucune mission</div>';
+        return;
+    }
+    div.innerHTML = activeMissions.map(m => `
+        <div class="mission-item ${m.claimed ? 'done' : ''}">
+            <span>${m.label}</span>
+            <span>${m.progress}/${m.target}</span>
+        </div>
+    `).join('');
+}
+
+
+// --- ECONOMY & OPENING ---
 function startOpeningSequence() {
     if(dbCards.length === 0) return;
+    if(isOpening) return;
+    
+    // VERIFICATION DU SOLDE
+    if(gameStats.money < 100) {
+        alert("Fonds insuffisants ! Il vous faut 100©.");
+        return;
+    }
+
+    addMoney(-100);
+    checkMission('OPEN_BOOSTER', 1);
+
+    isOpening = true;
+    AUDIO.playSound('open');
 
     sessionBoosters++;
-    totalBoosters++;
-    localStorage.setItem('totalBoosters', totalBoosters);
+    gameStats.totalBoosters++;
     updateCounters();
-    
-    // Gain d'XP à l'ouverture
-    gainXP(10);
+    saveData();
+    gainXP(15);
 
     prepareAndPreload(); 
     
@@ -359,9 +206,7 @@ function startOpeningSequence() {
         booster.classList.remove('shaking');
         flash.classList.add('active');
         
-        setTimeout(() => {
-            performDraw(); 
-        }, 300);
+        setTimeout(() => performDraw(), 300);
 
         setTimeout(() => {
             booster.classList.remove('opened');
@@ -369,6 +214,43 @@ function startOpeningSequence() {
             booster.style.animation = ''; 
         }, 1000);
     }, 600);
+}
+
+function prepareAndPreload() {
+    preparedCards = [];
+    isGodPack = Math.random() < 0.005; // 0.5% chance
+    
+    if (isGodPack) {
+        gameStats.godPacks++;
+        updateGodPackUI();
+        const godTierCards = dbCards.filter(c => c.weight <= 15);
+        const pool = godTierCards.length >= 5 ? godTierCards : dbCards;
+        for(let i = 0; i < 5; i++) preparedCards.push(pool[Math.floor(Math.random() * pool.length)]);
+    } else {
+        const totalWeight = dbCards.reduce((sum, c) => sum + c.weight, 0);
+        for(let i = 0; i < 5; i++) {
+            let randomNum = Math.random() * totalWeight;
+            let selected = dbCards[0];
+            // Garantie : La dernière carte a plus de chance d'être rare
+            if(i === 4) {
+               // Petite logique custom pour le slot "Rare garanti" (au moins Rare)
+               const betterPool = dbCards.filter(c => c.weight <= 40);
+               const w2 = betterPool.reduce((a,b)=>a+b.weight,0);
+               let r2 = Math.random() * w2;
+               for(const c of betterPool) {
+                   if(r2 < c.weight) { selected = c; break; }
+                   r2 -= c.weight;
+               }
+            } else {
+                for (const card of dbCards) {
+                    if (randomNum < card.weight) { selected = card; break; }
+                    randomNum -= card.weight;
+                }
+            }
+            preparedCards.push(selected);
+        }
+    }
+    preparedCards.forEach(card => { (new Image()).src = card.imgUrl; });
 }
 
 function performDraw() {
@@ -384,17 +266,17 @@ function performDraw() {
 
     if (isGodPack) launchGodConfetti();
 
+    let flippedCount = 0;
+
     preparedCards.forEach((cardData, index) => {
         const isNew = !myCollection.includes(cardData.id);
-        const isRare = cardData.weight <= 15; 
+        const rarity = Object.values(RARITIES).find(r => cardData.weight === r.weight) || RARITIES.COMMON;
 
         const cardEl = document.createElement('div');
         cardEl.className = 'flip-card';
-        cardEl.style.pointerEvents = 'none'; 
+        cardEl.style.setProperty('--rarity-color', rarity.color);
         
-        if(isRare) cardEl.classList.add('rare-card-base');
-        
-        let extras = '<div class="holo-overlay"></div>';
+        let extras = '<div class="holo-overlay"></div><div class="rarity-dot" style="background:'+rarity.color+'"></div>';
         if(isNew) extras += '<div class="new-badge">NEW!</div>';
 
         cardEl.innerHTML = `
@@ -403,36 +285,46 @@ function performDraw() {
                 <img class="card-img" src="${cardData.imgUrl}" alt="Pokemon"> ${extras}
             </div>
         `;
-        
         container.appendChild(cardEl);
 
         const flipCard = () => {
             if(cardEl.classList.contains('flipped')) return;
-            cardEl.classList.add('flipped');
             
+            AUDIO.playSound('flip');
+            cardEl.classList.add('flipped');
             cardEl.style.transform = "scale(0.95) rotateY(180deg)";
             setTimeout(() => {
                 if(!cardEl.matches(':hover')) cardEl.style.transform = "scale(1) rotateY(180deg)";
             }, 100);
 
             myCollection.push(cardData.id);
+            if(rarity.weight <= 5) gameStats.secretsFound++;
+            
+            // Check Mission RARE
+            if(rarity.weight <= 40) checkMission('FIND_RARE', 1);
+
             saveData();
             updateStats();
+            checkAchievements();
 
-            shopCards = shopCards.filter(c => c.id !== cardData.id);
-
-            // Si l'overlay du shop est visible, on rafraîchit l'affichage immédiatement
-            if (!document.getElementById('shop-overlay').classList.contains('hidden')) {
-                renderShop();
+            const inShopIndex = shopCards.findIndex(c => c.id === cardData.id);
+            if(inShopIndex > -1) {
+                shopCards.splice(inShopIndex, 1);
+                localStorage.setItem('currentShop', JSON.stringify(shopCards));
             }
 
-            document.getElementById('album-content').innerHTML = '';
-
-            if(isRare) {
+            if(rarity.weight <= 15) {
+                AUDIO.playSound('rare');
+                launchConfetti();
+            }
+            
+            flippedCount++;
+            if(flippedCount === 5) {
+                isOpening = false;
                 setTimeout(() => {
-                    cardEl.querySelector('.back').classList.add('is-rare');
-                    launchConfetti();
-                }, 400);
+                    btnNext.classList.remove('hidden');
+                    btnChange.classList.remove('hidden');
+                }, 500);
             }
         };
 
@@ -440,55 +332,400 @@ function performDraw() {
         cardEl.addEventListener('mouseleave', () => resetTilt(cardEl));
         cardEl.addEventListener('click', flipCard);
 
-        setTimeout(() => {
-            flipCard();
-            setTimeout(() => { cardEl.style.pointerEvents = 'auto'; }, 600);
-            
-            if(index === 0) { 
-                setTimeout(() => {
-                    btnNext.classList.remove('hidden');
-                    btnChange.classList.remove('hidden');
-                }, 600);
-            }
-
-        }, 600 + (index * 250));
+        setTimeout(() => flipCard(), 800 + (index * 400));
     });
 }
 
-// --- EFFETS VISUELS ---
+function resetForNewPack() {
+    startOpeningSequence();
+}
+
+// --- CRAFTING (LABO) ---
+function craftCards() {
+    // Il faut 5 cartes communes pour 1 rare
+    // On cherche les ID des cartes communes dans la collection
+    // Note: on utilise dbCards du set actif pour vérifier la rareté, 
+    // ou on scanne la collection. Pour simplifier, on filtre sur la collection actuelle
+    // en assumant que l'ID contient la ref.
+    // Mieux: on regarde quelles cartes on a en double ou simple qui sont communes.
+    
+    // Stratégie simple : On prend 5 communes au hasard dans la collection et on les supprime.
+    // Pour être safe, on ne prend que les DOUBLONS d'abord, puis les singles si nécessaire ?
+    // Non, le prompt dit "brûler 5 communes".
+    
+    // Retrouver les communes possédées
+    // Comme on n'a que l'ID dans myCollection, on doit savoir si c'est commun.
+    // On va charger la rareté via l'ID (on parse le numéro et on déduit, ou on check dbCards si chargé)
+    // Ici on utilise une astuce : le weight est lié à l'ID dans la génération.
+    
+    let commonsOwned = [];
+    myCollection.forEach((id, index) => {
+        // On essaye de trouver la carte dans le set global ou on déduit
+        // Ici on va faire simple : si on est sur le set actif, on check dbCards
+        // Sinon on suppose que c'est commun si ID est bas (pas fiable à 100% mais ok pour proto)
+        // LE MIEUX : Recalculer la rareté à la volée comme dans loadSet
+        
+        // Pour faire propre, on va filtrer uniquement les cartes du SET ACTIF pour le craft
+        // ou accepter tout. Restons sur le Set Actif pour utiliser dbCards.
+        const cardObj = dbCards.find(c => c.id === id);
+        if(cardObj && cardObj.weight === 100) {
+            commonsOwned.push(id);
+        }
+    });
+
+    if(commonsOwned.length < 5) {
+        document.getElementById('craft-msg').innerText = "Pas assez de cartes COMMUNES dans ce set (il en faut 5).";
+        return;
+    }
+
+    // On retire 5 cartes
+    for(let i=0; i<5; i++) {
+        const idToRemove = commonsOwned[i];
+        const idx = myCollection.indexOf(idToRemove);
+        if(idx > -1) myCollection.splice(idx, 1);
+    }
+
+    // On ajoute 1 Rare (ou mieux)
+    const rares = dbCards.filter(c => c.weight <= 40); // Rare, Ultra or Secret
+    const reward = rares[Math.floor(Math.random() * rares.length)];
+    
+    myCollection.push(reward.id);
+    
+    checkMission('CRAFT', 1);
+    saveData();
+    updateStats();
+    AUDIO.playSound('rare');
+    showNotification("Fusion Réussie !", "Vous avez obtenu : " + reward.id);
+    document.getElementById('craft-msg').innerText = "Fusion réussie ! 1 carte rare générée.";
+    
+    // Petit FX
+    launchConfetti();
+}
+
+function toggleCraft() {
+    const el = document.getElementById('craft-overlay');
+    el.classList.toggle('hidden');
+    document.getElementById('craft-msg').innerText = "";
+}
+
+// --- PROFIL & SAUVEGARDE ---
+function toggleProfile() {
+    const el = document.getElementById('profile-overlay');
+    if(el.classList.contains('hidden')) {
+        // Calcul score
+        const unique = new Set(myCollection).size;
+        const score = (unique * 10) + (gameStats.totalBoosters * 5) + (gameStats.godPacks * 500);
+        document.getElementById('profile-value').innerText = score.toLocaleString() + " pts";
+        document.getElementById('profile-opened').innerText = gameStats.totalBoosters;
+        el.classList.remove('hidden');
+    } else {
+        el.classList.add('hidden');
+    }
+}
+
+function exportSave() {
+    const data = {
+        col: myCollection,
+        stats: gameStats,
+        ach: unlockedAchievements,
+        mis: activeMissions
+    };
+    // Encodage Base64 simple
+    const str = btoa(JSON.stringify(data));
+    const area = document.getElementById('save-data-area');
+    area.value = str;
+    area.select();
+    try {
+        navigator.clipboard.writeText(str);
+        showNotification("Copié !", "Sauvegarde dans le presse-papier");
+    } catch(e) {
+        showNotification("Succès", "Copiez le texte manuellement");
+    }
+}
+
+function importSave() {
+    const str = document.getElementById('save-data-area').value.trim();
+    if(!str) return alert("Collez un code d'abord !");
+    try {
+        const data = JSON.parse(atob(str));
+        if(data.col && data.stats) {
+            myCollection = data.col;
+            gameStats = data.stats;
+            unlockedAchievements = data.ach || [];
+            activeMissions = data.mis || [];
+            saveData();
+            location.reload();
+        } else {
+            alert("Sauvegarde invalide.");
+        }
+    } catch(e) {
+        alert("Erreur de lecture du code.");
+    }
+}
+
+// --- BOUTIQUE ---
+function loadShopFromStorage() {
+    const savedShop = localStorage.getItem('currentShop');
+    const savedTime = localStorage.getItem('shopTargetTime');
+    if (savedShop && savedTime) {
+        const remaining = parseInt(savedTime) - Date.now();
+        if (remaining > 0) {
+            shopCards = JSON.parse(savedShop);
+            return;
+        }
+    }
+    generateShopCards();
+}
+
+function generateShopCards() {
+    const now = Date.now();
+    localStorage.setItem('shopTargetTime', now + (SHOP_REFRESH_TIME * 1000));
+    shopCards = [];
+    const missingCards = dbCards.filter(card => !myCollection.includes(card.id));
+    if(missingCards.length > 0) {
+        const shuffled = [...missingCards].sort(() => 0.5 - Math.random());
+        shopCards = shuffled.slice(0, 10).map(c => ({ ...c, price: c.price }));
+    }
+    localStorage.setItem('currentShop', JSON.stringify(shopCards));
+}
+
+function startShopTimer() {
+    if(shopRefreshTimer) clearInterval(shopRefreshTimer);
+    shopRefreshTimer = setInterval(() => {
+        const remaining = Math.floor((parseInt(localStorage.getItem('shopTargetTime') || 0) - Date.now()) / 1000);
+        if(remaining <= 0) {
+            generateShopCards();
+        } else {
+            const m = Math.floor(remaining / 60).toString().padStart(2, '0');
+            const s = (remaining % 60).toString().padStart(2, '0');
+            const str = `${m}:${s}`;
+            document.getElementById('shop-countdown').innerText = str;
+            document.getElementById('sidebar-shop-timer').innerText = str;
+        }
+    }, 1000);
+}
+
+function renderShop() {
+    document.getElementById('shop-user-money').innerText = gameStats.money.toLocaleString();
+    const container = document.getElementById('shop-content');
+    container.innerHTML = '';
+    if(shopCards.length === 0) {
+        container.innerHTML = '<p style="color:#aaa;grid-column:1/-1;text-align:center">Boutique vide !</p>';
+        return;
+    }
+    shopCards.forEach(item => {
+        const rarity = Object.values(RARITIES).find(r => item.weight === r.weight) || RARITIES.COMMON;
+        const div = document.createElement('div');
+        div.className = 'shop-card-wrapper';
+        div.style.borderBottom = `2px solid ${rarity.color}`;
+        div.innerHTML = `
+            <img src="${item.imgUrl}" class="shop-card-img" loading="lazy">
+            <div class="shop-price-tag" style="color:${rarity.color}">
+                <span>${item.price}</span> <span style="font-size:12px">©</span>
+            </div>
+            <button class="btn-buy-card" onclick="buyCard('${item.id}', ${item.price})" style="background:${rarity.color}; color:white;">
+                ACHETER
+            </button>
+        `;
+        const btn = div.querySelector('button');
+        if(gameStats.money < item.price) {
+            btn.disabled = true;
+            btn.innerText = "MANQUE " + (item.price - gameStats.money);
+            btn.style.background = "#333";
+        }
+        container.appendChild(div);
+    });
+}
+
+function buyCard(cardId, price) {
+    if(gameStats.money >= price) {
+        AUDIO.playSound('sell');
+        addMoney(-price);
+        gameStats.spentMoney += price;
+        myCollection.push(cardId);
+        
+        shopCards = shopCards.filter(c => c.id !== cardId);
+        localStorage.setItem('currentShop', JSON.stringify(shopCards));
+        
+        saveData();
+        updateStats();
+        renderShop();
+        document.getElementById('album-content').innerHTML = ''; 
+        launchConfetti();
+        checkAchievements();
+    }
+}
+
+function forceShopRefresh() {
+    if(gameStats.money >= 50) {
+        addMoney(-50);
+        generateShopCards();
+        renderShop();
+    } else {
+        alert("Pas assez d'argent !");
+    }
+}
+
+// --- GESTION SETS & UTILS ---
+function generateSidebar() {
+    const container = document.getElementById('set-buttons-container');
+    container.innerHTML = '';
+    SETS.forEach(set => {
+        const btn = document.createElement('button');
+        btn.className = 'set-btn';
+        btn.id = `btn-${set.id}`;
+        if (currentSet && set.id === currentSet.id) btn.classList.add('active');
+        const isLocked = gameStats.level < set.reqLevel;
+
+        if (isLocked) {
+            btn.classList.add('locked');
+            btn.innerHTML = `${set.name} <span class="lock-icon">🔒 Lvl ${set.reqLevel}</span>`;
+        } else {
+            const uniqueCardsInSet = new Set(myCollection.filter(id => id.startsWith(set.apiId)));
+            const isCompleted = uniqueCardsInSet.size >= set.count;
+            btn.innerHTML = `${set.name} ${isCompleted ? '<span style="color:#10b981;float:right">✓</span>' : ''}`;
+            btn.onclick = () => {
+                loadSet(set.id);
+                if(window.innerWidth < 768) toggleSidebar();
+            };
+        }
+        container.appendChild(btn);
+    });
+}
+
+function loadSet(setId) {
+    document.querySelectorAll('.set-btn').forEach(b => b.classList.remove('active'));
+    const btn = document.getElementById(`btn-${setId}`);
+    if(btn) btn.classList.add('active');
+    
+    currentSet = SETS.find(s => s.id === setId);
+    document.getElementById('booster-set-title').innerText = currentSet.name;
+    document.getElementById('hud-set-title').innerText = currentSet.name;
+    
+    const imgBooster = document.getElementById('booster-img');
+    imgBooster.src = currentSet.img;
+    imgBooster.onerror = () => { imgBooster.src = 'https://tcg.pokemon.com/assets/img/global/tcg-card-back-2x.jpg'; };
+    
+    dbCards = [];
+    for (let i = 1; i <= currentSet.count; i++) {
+        const paddedId = i.toString().padStart(3, '0'); 
+        let rarityConfig = RARITIES.COMMON;
+        const progress = i / currentSet.count;
+        if (progress > 0.98) rarityConfig = RARITIES.SECRET;
+        else if (progress > 0.90) rarityConfig = RARITIES.ULTRA_RARE;
+        else if (progress > 0.75) rarityConfig = RARITIES.RARE;
+
+        dbCards.push({
+            id: `${currentSet.apiId}-${paddedId}`,
+            localId: paddedId,
+            imgUrl: `img/${currentSet.apiId}/${i}.png`,
+            ...rarityConfig
+        });
+    }
+
+    if(shopCards.length === 0) generateShopCards();
+    updateStats();
+    document.querySelector('.top-hud').classList.add('visible');
+}
+
+function getRequiredXP(level) { return 500 + ((level - 1) * 100); }
+
+function gainXP(amount) {
+    gameStats.xp += amount;
+    showNotification("XP Gagné", `+${amount} XP`);
+    let reqXP = getRequiredXP(gameStats.level);
+    if(gameStats.xp >= reqXP) {
+        gameStats.level++;
+        gameStats.xp -= reqXP;
+        showNotification("NIVEAU SUPÉRIEUR !", `Niveau ${gameStats.level} atteint !`);
+        alert(`NIVEAU SUPÉRIEUR ! Vous êtes niveau ${gameStats.level} !`);
+        generateSidebar();
+    }
+    saveData();
+    updateLevelUI();
+}
+
+function updateLevelUI() {
+    const reqXP = getRequiredXP(gameStats.level);
+    document.getElementById('user-level').innerText = gameStats.level;
+    document.getElementById('xp-bar').style.width = `${Math.floor((gameStats.xp / reqXP) * 100)}%`;
+    document.getElementById('xp-text').innerText = `${gameStats.xp} / ${reqXP} XP`;
+
+    // Calcul Rang
+    const unique = new Set(myCollection).size;
+    const score = (unique * 10) + (gameStats.totalBoosters * 5); 
+    const rank = RANKS.slice().reverse().find(r => score >= r.val) || RANKS[0];
+    document.getElementById('collection-rank').innerText = rank.name;
+}
+
+function updateCounters() {
+    document.getElementById('session-count').innerText = sessionBoosters;
+    document.getElementById('total-count').innerText = gameStats.totalBoosters;
+}
+
+function updateGodPackUI() {
+    document.getElementById('god-pack-count').innerText = gameStats.godPacks;
+}
+
+function updateMoneyUI() {
+    const s = gameStats.money.toLocaleString();
+    document.getElementById('user-money').innerText = s;
+    const shopM = document.getElementById('shop-user-money');
+    if(shopM) shopM.innerText = s;
+}
+
+function addMoney(amount) {
+    gameStats.money += amount;
+    if(amount > 0) checkMission('EARN_MONEY', amount);
+    saveData();
+    updateMoneyUI();
+}
+
+function checkAchievements() {
+    const uniqueCards = new Set(myCollection).size;
+    const currentStats = { ...gameStats, uniqueCards: uniqueCards };
+    let hasNew = false;
+    ACHIEVEMENTS.forEach(ach => {
+        if(!unlockedAchievements.includes(ach.id)) {
+            if(ach.condition(currentStats)) {
+                unlockedAchievements.push(ach.id);
+                showNotification(`Succès : ${ach.name}`, `+${ach.reward} Crédits`, true);
+                addMoney(ach.reward);
+                hasNew = true;
+            }
+        }
+    });
+    document.getElementById('achievements-badge').innerText = `${unlockedAchievements.length}/${ACHIEVEMENTS.length}`;
+    if(hasNew) saveData();
+}
+
+function showNotification(title, message, isAchievement = false) {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = `toast ${isAchievement ? 'achievement' : ''}`;
+    toast.innerHTML = `<div class="toast-title">${title}</div><div class="toast-desc">${message}</div>`;
+    container.appendChild(toast);
+    setTimeout(() => {
+        toast.style.animation = 'slideInRight 0.4s ease-in reverse forwards';
+        setTimeout(() => toast.remove(), 400);
+    }, 4000);
+}
+
+// --- FX & NAV ---
 function handleTilt(e, card) {
     if (!card.classList.contains('flipped')) return;
     const rect = card.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    const centerX = rect.width / 2;
-    const centerY = rect.height / 2;
-    const rotateX = ((y - centerY) / centerY) * -20; 
-    const rotateY = ((x - centerX) / centerX) * 20;
-    card.style.transition = 'transform 0.05s ease-out';
-    card.style.transform = `rotateY(${180 + rotateY}deg) rotateX(${rotateX}deg) scale(1.1)`;
-    const holo = card.querySelector('.holo-overlay');
-    if(holo) {
-        holo.style.backgroundPosition = `${x/5 + y/5}%`;
-        holo.style.opacity = 0.4;
-    }
+    const x = e.clientX - rect.left - rect.width / 2;
+    const y = e.clientY - rect.top - rect.height / 2;
+    card.style.transform = `perspective(1000px) rotateY(${180 + x / 10}deg) rotateX(${-y / 10}deg) scale(1.05)`;
 }
-
 function resetTilt(card) {
-    card.style.transition = 'transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)';
-    if (card.classList.contains('flipped')) {
-        card.style.transform = 'rotateY(180deg) rotateX(0deg) scale(1)';
-    } else {
-        card.style.transform = 'rotateY(0deg) rotateX(0deg) scale(1)';
-    }
-    const holo = card.querySelector('.holo-overlay');
-    if(holo) holo.style.opacity = 0;
+    if (card.classList.contains('flipped')) card.style.transform = 'rotateY(180deg) rotateX(0deg) scale(1)';
 }
-
 function launchConfetti() {
     const container = document.getElementById('particles-container');
     const colors = ['#fbbf24', '#ef4444', '#3b82f6', '#10b981'];
-    for(let i=0; i<30; i++) {
+    for(let i=0; i<40; i++) {
         const p = document.createElement('div');
         p.className = 'confetti';
         p.style.left = Math.random() * 100 + 'vw';
@@ -498,61 +735,48 @@ function launchConfetti() {
         setTimeout(() => p.remove(), 3000);
     }
 }
-
-// --- NAVIGATION & UI ---
-function toggleSidebar() {
-    document.getElementById('sidebar').classList.toggle('open');
+function launchGodConfetti() {
+    const container = document.getElementById('particles-container');
+    for(let i=0; i<150; i++) {
+        const p = document.createElement('div');
+        p.className = 'god-confetti';
+        p.style.left = Math.random() * 100 + 'vw';
+        p.style.animationDuration = (Math.random() * 3 + 2) + 's';
+        container.appendChild(p);
+        setTimeout(() => p.remove(), 5000);
+    }
 }
-
-function switchView(viewId) {
+function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); }
+function switchView(id) {
     document.querySelectorAll('.view').forEach(v => {
         v.classList.remove('active');
         v.classList.add('hidden');
     });
-    const target = document.getElementById(viewId);
-    target.classList.remove('hidden');
-    target.classList.add('active');
+    document.getElementById(id).classList.remove('hidden');
+    document.getElementById(id).classList.add('active');
 }
-
-function returnToBooster() {
-    switchView('view-booster');
+function returnToBooster() { switchView('view-booster'); }
+function openZoom(url) { 
+    document.getElementById('zoom-img').src = url; 
+    document.getElementById('zoom-overlay').classList.remove('hidden'); 
 }
-
-function updateStats() {
-    const totalCards = SETS.reduce((acc, set) => acc + set.count, 0);
-    const uniqueCollection = new Set(myCollection);
-    const totalOwnedUnique = uniqueCollection.size;
-    
-    const globalPercent = totalCards > 0 ? Math.floor((totalOwnedUnique / totalCards) * 100) : 0;
-    
-    document.getElementById('collection-count').innerText = `${totalOwnedUnique} / ${totalCards} cartes`;
-    document.getElementById('collection-percent').innerText = `${globalPercent}%`;
-    document.getElementById('collection-bar').style.width = `${globalPercent}%`;
-
-    if (currentSet) {
-        const currentSetUnique = new Set(myCollection.filter(id => id.startsWith(currentSet.apiId)));
-        const currentSetOwned = currentSetUnique.size;
-        const setPercent = Math.floor((currentSetOwned / currentSet.count) * 100);
-        
-        document.getElementById('hud-set-count').innerText = `${currentSetOwned}/${currentSet.count}`;
-        document.getElementById('hud-set-percent').innerText = `${setPercent}%`;
-        document.getElementById('hud-set-bar').style.width = `${setPercent}%`;
+function closeZoom() { document.getElementById('zoom-overlay').classList.add('hidden'); }
+function confirmReset() {
+    if(confirm("Tout effacer ? Cette action est irréversible.")) {
+        localStorage.clear();
+        location.reload();
     }
 }
-
-// --- ALBUM, FILTRES & VENTE ---
 function toggleAlbum() {
-    const album = document.getElementById('album-overlay');
-    if(album.classList.contains('hidden')) {
-        renderAlbum();
-        album.classList.remove('hidden');
-    } else {
-        album.classList.add('hidden');
-    }
+    const el = document.getElementById('album-overlay');
+    if(el.classList.contains('hidden')) { renderAlbum(); el.classList.remove('hidden'); }
+    else el.classList.add('hidden');
 }
+function toggleShop() { document.getElementById('shop-overlay').classList.toggle('hidden'); }
 
-function filterAlbum(filterType) {
-    currentFilter = filterType;
+// --- ALBUM RENDER REVISITÉ (Par set + Vente Unitaire) ---
+function filterAlbum(type) {
+    currentFilter = type;
     document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
     event.target.classList.add('active');
     renderAlbum(true); 
@@ -560,36 +784,18 @@ function filterAlbum(filterType) {
 
 function renderAlbum(force = false) {
     const container = document.getElementById('album-content');
-    if(container.innerHTML !== '' && !force) {
-        refreshAlbumStatus();
-        return;
-    }
-    
-    container.innerHTML = ''; // On vide pour reconstruire proprement
-    // ... reste du code inchangé
-    
+    if(container.innerHTML !== '' && !force) return;
     container.innerHTML = ''; 
 
     SETS.forEach(set => {
-        const group = document.createElement('div');
-        group.className = 'set-group';
-        group.dataset.prefix = set.apiId;
-        group.dataset.count = set.count;
+        const setCards = myCollection.filter(id => id.startsWith(set.apiId));
+        if(currentFilter === 'owned' && setCards.length === 0) return;
 
-        const header = document.createElement('button');
-        header.className = 'set-header';
-        header.innerHTML = `<span>${set.name}</span> <span class="count-badge">...</span>`;
-        
-        const body = document.createElement('div');
-        body.className = 'set-body';
-        const grid = document.createElement('div');
-        grid.className = 'set-grid';
-
-        let hasVisibleCards = false;
-
-        const setCardsInCollection = myCollection.filter(id => id.startsWith(set.apiId));
         const counts = {};
-        setCardsInCollection.forEach(id => { counts[id] = (counts[id] || 0) + 1; });
+        setCards.forEach(id => { counts[id] = (counts[id] || 0) + 1; });
+
+        let gridHTML = '';
+        let visibleCount = 0;
 
         for (let i = 1; i <= set.count; i++) {
             const paddedId = i.toString().padStart(3, '0');
@@ -599,145 +805,153 @@ function renderAlbum(force = false) {
 
             if (currentFilter === 'owned' && !isOwned) continue;
             if (currentFilter === 'missing' && isOwned) continue;
-            hasVisibleCards = true;
 
-            const cardSlot = document.createElement('div');
-            cardSlot.className = `album-card ${isOwned ? 'owned' : ''}`;
-            cardSlot.dataset.id = cardId;
-            cardSlot.dataset.img = `img/${set.apiId}/${i}.png`;
+            visibleCount++;
             
-            if(isOwned) {
-                 const img = document.createElement('img');
-                 img.loading = "lazy";
-                 img.src = cardSlot.dataset.img;
-                 img.classList.add('loaded');
-                 cardSlot.appendChild(img);
-                 
-                 if(qty > 1) {
-                     const badge = document.createElement('span');
-                     badge.className = 'qty-badge';
-                     badge.innerText = `x${qty}`;
-                     cardSlot.appendChild(badge);
-                 }
-                 
-                 cardSlot.onclick = () => openZoom(cardSlot.dataset.img);
-            } else {
-                 cardSlot.innerHTML = `<span class="missing-num">${paddedId}</span>`;
-            }
-            grid.appendChild(cardSlot);
+            // Calcul rareté approximatif pour bordure
+            const progress = i / set.count;
+            let borderColor = 'transparent';
+            let price = 10;
+            if(progress > 0.98) { borderColor = RARITIES.SECRET.color; price = 1000; }
+            else if(progress > 0.90) { borderColor = RARITIES.ULTRA_RARE.color; price = 250; }
+            else if(progress > 0.75) { borderColor = RARITIES.RARE.color; price = 50; }
+
+            const imgHTML = isOwned 
+                ? `<img src="img/${set.apiId}/${i}.png" loading="lazy" class="loaded">`
+                : `<span class="missing-num">${paddedId}</span>`;
+            
+            const badge = qty > 1 ? `<span class="qty-badge">x${qty}</span>` : '';
+            const style = isOwned ? `border: 1px solid ${borderColor}` : '';
+            
+            // Bouton de vente unitaire
+            const sellBtn = isOwned ? `<div class="card-actions"><button class="btn-sell-single" onclick="sellSingleCard('${cardId}', ${price}, event)">VENDRE ${price}©</button></div>` : '';
+
+            gridHTML += `
+                <div class="album-card ${isOwned ? 'owned' : ''}" style="${style}" 
+                     onclick="${isOwned ? `openZoom('img/${set.apiId}/${i}.png')` : ''}">
+                    ${imgHTML}${badge}${sellBtn}
+                </div>`;
         }
 
-        if(!hasVisibleCards && currentFilter !== 'all') return; 
-
-        body.appendChild(grid);
-        group.appendChild(header);
-        group.appendChild(body);
-        container.appendChild(group);
-
-        header.onclick = () => {
-            const isOpen = body.style.maxHeight;
-            document.querySelectorAll('.set-body').forEach(b => b.style.maxHeight = null);
-            document.querySelectorAll('.set-header').forEach(h => h.classList.remove('active'));
-            if(!isOpen) {
-                header.classList.add('active');
-                body.style.maxHeight = body.scrollHeight + "px";
-            }
-        };
-    });
-    refreshAlbumStatus();
-}
-
-function refreshAlbumStatus() {
-    document.querySelectorAll('.set-group').forEach(group => {
-        const prefix = group.dataset.prefix;
-        const total = parseInt(group.dataset.count);
-        const uniqueInSet = new Set(myCollection.filter(id => id.startsWith(prefix)));
-        group.querySelector('.count-badge').innerText = `${uniqueInSet.size} / ${total}`;
+        if(visibleCount > 0) {
+            const group = document.createElement('div');
+            group.className = 'set-group';
+            group.innerHTML = `
+                <button class="set-header">
+                    <span>${set.name}</span> 
+                    <span class="count-badge">${new Set(setCards).size} / ${set.count}</span>
+                </button>
+                <div class="set-body"><div class="set-grid">${gridHTML}</div></div>
+            `;
+            group.querySelector('.set-header').onclick = function() {
+                this.classList.toggle('active');
+                const body = this.nextElementSibling;
+                body.style.maxHeight = body.style.maxHeight ? null : body.scrollHeight + "px";
+            };
+            container.appendChild(group);
+        }
     });
 }
 
 function sellDuplicates() {
     const counts = {};
     myCollection.forEach(id => { counts[id] = (counts[id] || 0) + 1; });
-
     let totalGain = 0;
     let newCollection = [];
+    let soldCount = 0;
 
     Object.keys(counts).forEach(id => {
         const qty = counts[id];
-        newCollection.push(id);
-
+        newCollection.push(id); 
         if (qty > 1) {
-            const duplicatesToSell = qty - 1;
-            
+            const duplicates = qty - 1;
+            // Estime prix
             const parts = id.split('-');
-            const numStr = parts[parts.length - 1];
-            const cardNum = parseInt(numStr);
-            const setApiId = id.substring(0, id.length - 4);
-            const setObj = SETS.find(s => s.apiId === setApiId);
-            
-            let price = 10; 
-            
+            const num = parseInt(parts[parts.length-1]);
+            const setId = id.substring(0, id.length - 4);
+            const setObj = SETS.find(s => s.apiId === setId);
+            let price = 10;
             if(setObj) {
-                if (cardNum > setObj.count * 0.95) price = 500;      
-                else if (cardNum > setObj.count * 0.85) price = 200; 
-                else if (cardNum > setObj.count * 0.65) price = 50;  
+                const ratio = num / setObj.count;
+                if(ratio > 0.98) price = 1000;
+                else if(ratio > 0.90) price = 250;
+                else if(ratio > 0.75) price = 50;
             }
-
-            totalGain += (duplicatesToSell * price);
+            totalGain += (duplicates * price);
+            soldCount += duplicates;
         }
     });
 
-    if (totalGain === 0) {
-        alert("Vous n'avez aucun doublon à vendre pour le moment !");
-        return;
-    }
-
-    if(confirm(`Voulez-vous vendre tous vos doublons pour ${totalGain} Crédits ?`)) {
-        myCollection = newCollection; 
-        saveData();
+    if (soldCount === 0) { alert("Aucun doublon."); return; }
+    if(confirm(`Vendre ${soldCount} cartes pour ${totalGain} Crédits ?`)) {
+        AUDIO.playSound('sell');
+        myCollection = newCollection;
         addMoney(totalGain);
-        renderAlbum(true); 
+        saveData();
+        renderAlbum(true);
         updateStats();
-        alert(`Vente réussie ! Vous avez gagné ${totalGain} Crédits.`);
+        checkAchievements();
     }
 }
 
-
-function saveData() { 
-    localStorage.setItem('tcgCollection', JSON.stringify(myCollection)); 
-    generateSidebar();
-}
-
-function confirmReset() {
-    if(confirm("Voulez-vous vraiment tout réinitialiser (Collection, Argent, Niveau) ?")) {
-        localStorage.clear();
-        location.reload();
-        localStorage.removeItem('totalGodPacks');
+function sellSingleCard(id, price, event) {
+    event.stopPropagation(); // Empêcher le zoom
+    if(confirm(`Vendre cette carte pour ${price}© ?`)) {
+        const index = myCollection.indexOf(id);
+        if(index > -1) {
+            myCollection.splice(index, 1);
+            addMoney(price);
+            AUDIO.playSound('sell');
+            saveData();
+            updateStats();
+            // Re-render sans fermer
+            renderAlbum(true);
+        }
     }
 }
 
-function openZoom(url) { 
-    document.getElementById('zoom-img').src = url; 
-    document.getElementById('zoom-overlay').classList.remove('hidden'); 
-}
-function closeZoom() { document.getElementById('zoom-overlay').classList.add('hidden'); }
-
-function launchGodConfetti() {
-    const container = document.getElementById('particles-container');
-    for(let i=0; i<150; i++) {
-        const p = document.createElement('div');
-        p.className = 'god-confetti';
-        p.style.left = Math.random() * 100 + 'vw';
-        const duration = Math.random() * 3 + 2; 
-        p.style.animationDuration = duration + 's';
-        const size = Math.random() * 10 + 5;
-        p.style.width = size + 'px';
-        p.style.height = size + 'px';
-        container.appendChild(p);
-        setTimeout(() => p.remove(), duration * 1000);
+function updateStats() {
+    const unique = new Set(myCollection).size;
+    const total = SETS.reduce((a,b) => a + b.count, 0);
+    const p = Math.floor((unique/total)*100);
+    document.getElementById('collection-count').innerText = `${unique} / ${total} cartes`;
+    document.getElementById('collection-percent').innerText = `${p}%`;
+    document.getElementById('collection-bar').style.width = `${p}%`;
+    
+    if(currentSet) {
+        const sUnique = new Set(myCollection.filter(id => id.startsWith(currentSet.apiId))).size;
+        const sP = Math.floor((sUnique/currentSet.count)*100);
+        document.getElementById('hud-set-count').innerText = `${sUnique}/${currentSet.count}`;
+        document.getElementById('hud-set-percent').innerText = `${sP}%`;
+        document.getElementById('hud-set-bar').style.width = `${sP}%`;
     }
-
+}
+function toggleAchievements() {
+    const el = document.getElementById('achievements-overlay');
+    if(el.classList.contains('hidden')) {
+        renderAchievements(); // On va créer cette mini fonction aussi
+        el.classList.remove('hidden');
+    } else {
+        el.classList.add('hidden');
+    }
 }
 
-
+function renderAchievements() {
+    const container = document.getElementById('achievements-content');
+    container.innerHTML = '';
+    
+    ACHIEVEMENTS.forEach(ach => {
+        const isUnlocked = unlockedAchievements.includes(ach.id);
+        const div = document.createElement('div');
+        div.className = `achievement-card ${isUnlocked ? 'unlocked' : ''}`;
+        div.innerHTML = `
+            <div class="achievement-icon">${ach.icon}</div>
+            <div class="achievement-info">
+                <h3>${ach.name}</h3>
+                <p>${ach.desc}</p>
+                ${isUnlocked ? '<div class="achievement-reward">DÉBLOQUÉ</div>' : `<div class="achievement-reward">Récompense : ${ach.reward}©</div>`}
+            </div>
+        `;
+        container.appendChild(div);
+    });
+}
