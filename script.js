@@ -23,6 +23,7 @@ let myCollection = JSON.parse(localStorage.getItem('tcgCollection')) || [];
 let currentFilter = 'all';
 let preparedCards = [];
 let isGodPack = false;
+let totalGodPacks = parseInt(localStorage.getItem('totalGodPacks')) || 0;
 
 // --- SHOP VARIABLES ---
 let shopCards = []; // Liste des cartes actuellement dans la boutique
@@ -45,13 +46,17 @@ document.addEventListener('DOMContentLoaded', () => {
     updateCounters(); 
     updateMoneyUI();
     updateLevelUI(); 
-    startShopTimer(); // Lancer le chrono du shop
+    startShopTimer();
+    updateGodPackUI();
     
     document.querySelector('.stage').addEventListener('click', () => {
         document.getElementById('sidebar').classList.remove('open');
     });
 });
 
+function updateGodPackUI() {
+    document.getElementById('god-pack-count').innerText = totalGodPacks;
+}
 // --- GESTION DES SETS ---
 function generateSidebar() {
     const container = document.getElementById('set-buttons-container');
@@ -293,9 +298,12 @@ function addMoney(amount) {
 
 function prepareAndPreload() {
     preparedCards = [];
-    isGodPack = Math.random() < 0.05; 
+    isGodPack = Math.random() < 0.5; 
 
     if (isGodPack) {
+        totalGodPacks++;
+        localStorage.setItem('totalGodPacks', totalGodPacks);
+        updateGodPackUI();
         const godTierCards = dbCards.filter(c => c.weight <= 15);
         if (godTierCards.length < 5) {
             isGodPack = false;
@@ -331,7 +339,7 @@ function startOpeningSequence() {
     updateCounters();
     
     // Gain d'XP à l'ouverture
-    gainXP(20);
+    gainXP(10);
 
     prepareAndPreload(); 
     
@@ -696,6 +704,7 @@ function confirmReset() {
     if(confirm("Voulez-vous vraiment tout réinitialiser (Collection, Argent, Niveau) ?")) {
         localStorage.clear();
         location.reload();
+        localStorage.removeItem('totalGodPacks');
     }
 }
 
@@ -719,6 +728,4 @@ function launchGodConfetti() {
         container.appendChild(p);
         setTimeout(() => p.remove(), duration * 1000);
     }
-
 }
-
