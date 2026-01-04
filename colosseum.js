@@ -19,6 +19,30 @@ const ENEMY_SETS = [
     { apiId: 'embrasement-ecarlate', count: 103 }
 ];
 
+// --- AJOUT POUR LE MODE AVENTURE ---
+const urlParams = new URLSearchParams(window.location.search);
+const gameMode = urlParams.get('mode'); // Sera 'gym' si on vient de l'aventure
+const gymMaster = urlParams.get('master');
+const gymBadgeId = urlParams.get('badgeId');
+const gymDifficulty = parseInt(urlParams.get('difficulty')) || 1;
+
+document.addEventListener('DOMContentLoaded', () => {
+    updateLeagueUI();
+    loadCollectionPicker();
+    
+    // SI C'EST UN COMBAT D'ARÈNE : On modifie l'interface
+    if (gameMode === 'gym') {
+        // Change le titre
+        document.querySelector('.header-left h1').innerHTML = `DÉFI D'ARÈNE : <span class="text-danger">${gymMaster.toUpperCase()}</span>`;
+        document.getElementById('current-league').style.display = 'none'; // Cache la ligue
+        
+        // Change le bouton quitter pour qu'il ferme l'onglet
+        const exitBtn = document.querySelector('.btn-exit');
+        exitBtn.innerText = "ABANDONNER";
+        exitBtn.onclick = () => window.close();
+    }
+});
+
 // --- STATE ---
 let myCollection = JSON.parse(localStorage.getItem('tcgCollection')) || [];
 let userTeam = [null, null, null];
@@ -59,8 +83,19 @@ function getCardStats(cardId) {
 document.addEventListener('DOMContentLoaded', () => {
     updateLeagueUI();
     loadCollectionPicker();
-});
 
+    // SI C'EST UN COMBAT D'ARÈNE
+    if (gameMode === 'gym') {
+        // Change le titre
+        document.querySelector('.header-left h1').innerHTML = `DÉFI D'ARÈNE : <span class="text-danger">${gymMaster.toUpperCase()}</span>`;
+        document.getElementById('current-league').style.display = 'none'; // Cache la ligue
+        
+        // Change le bouton quitter pour qu'il ferme l'onglet
+        const exitBtn = document.querySelector('.btn-exit');
+        exitBtn.innerText = "ABANDONNER";
+        exitBtn.onclick = () => window.close();
+    }
+});
 // --- LOBBY LOGIC ---
 function updateLeagueUI() {
     document.getElementById('current-league').innerText = LEAGUES[currentLeagueIdx];
@@ -140,28 +175,45 @@ function checkReady() {
 
 // --- COMBAT LOGIC ---
 function startCombat() {
-    // Générer équipe ennemie
     enemyTeam = [];
     
+    // CONFIGURATION DE LA DIFFICULTÉ SELON L'ARÈNE
+    // Plus le numéro d'arène est haut, plus les cartes sont fortes (poids faible = rare)
+    let minRarity = 100; // Cartes communes par défaut
+    let maxRarity = 1;   // Cartes God Tier
+    
+    // Arène 1 (Pierre) : Cartes basiques
+    // Arène 8 (Ligue) : Cartes Ultra Rares garanties
+    
     for(let i=0; i<3; i++) {
-        // 1. Choisir une extension au hasard
         const randomSet = ENEMY_SETS[Math.floor(Math.random() * ENEMY_SETS.length)];
+        let randomNum = Math.floor(Math.random() * randomSet.count) + 1;
         
-        // 2. Choisir un numéro de carte au hasard dans cette extension
-        // (Math.random() * count) + 1 donne un nombre entre 1 et le max du set
-        const randomNum = Math.floor(Math.random() * randomSet.count) + 1;
-        
-        // 3. Créer la carte avec le bon ID (ex: choc-spatio-temporel-42)
-        // Le système getCardStats s'occupera de trouver l'image correspondante
-        enemyTeam.push(getCardStats(`${randomSet.apiId}-${randomNum}`));
+        // PETITE TRICHE POUR LES CHAMPIONS :
+        // Si c'est une arène difficile, on force des numéros élevés (souvent plus rares)
+        if(gameMode === 'gym') {
+            if(gymDifficulty >= 3) randomNum = Math.floor(Math.random() * (randomSet.count / 2)) + (randomSet.count / 2); // Moitié supérieure
+            if(gymDifficulty >= 6) randomNum = Math.floor(Math.random() * 20) + (randomSet.count - 20); // Top 20 cartes du set
+        }
+
+        let cardStats = getCardStats(`${randomSet.apiId}-${randomNum}`);
+
+        // BOOST DES STATS POUR LES CHAMPIONS (HP/ATK)
+        // Arène 1 = x1.0, Arène 8 = x1.4
+        if (gameMode === 'gym') {
+            const multiplier = 1 + (gymDifficulty * 0.05); 
+            cardStats.hp = Math.floor(cardStats.hp * multiplier);
+            cardStats.maxHp = cardStats.hp; // Mettre à jour maxHp aussi
+            cardStats.atk = Math.floor(cardStats.atk * multiplier);
+        }
+
+        enemyTeam.push(cardStats);
     }
     
-    // Convertir équipe joueur en objets stats
+    // (Le reste ne change pas)
     let activeUserTeam = userTeam.map(id => getCardStats(id));
-    
     document.getElementById('view-lobby').classList.add('hidden');
     document.getElementById('view-battle').classList.remove('hidden');
-    
     runBattleLoop(activeUserTeam, enemyTeam);
 }
 
@@ -169,59 +221,125 @@ function runBattleLoop(pTeam, eTeam) {
     let pIdx = 0;
     let eIdx = 0;
     
+    // Mise à jour initiale
     updateField(pTeam[pIdx], eTeam[eIdx], pTeam.slice(pIdx+1), eTeam.slice(eIdx+1));
     
     const log = document.getElementById('battle-log');
     
     battleInterval = setInterval(() => {
+        // On récupère les combattants ACTUELS (au début du tour)
+        // Attention : on utilise les index pIdx/eIdx pour être sûr d'avoir les bons
         const pCard = pTeam[pIdx];
         const eCard = eTeam[eIdx];
         
-        if(!pCard || !eCard) { // Fin du combat
+        // SÉCURITÉ : Si l'un des deux n'existe plus (combat fini), on arrête tout de suite
+        if(!pCard || !eCard) {
             clearInterval(battleInterval);
-            endBattle(pTeam.length > 0 && pTeam[pIdx].hp > 0);
+            endBattle(pTeam.length > 0 && pCard && pCard.hp > 0);
             return;
         }
 
-        // --- TOUR DU JOUEUR ---
+        // --- 1. TOUR DU JOUEUR ---
         animateAttack('player');
         setTimeout(() => {
+            // Recalcul de sécurité au cas où le combat soit fini pendant l'anim
+            if (!pCard || !eCard) return;
+
             const dmg = Math.floor(pCard.atk * (0.8 + Math.random() * 0.4));
             eCard.hp -= dmg;
             showDamage('enemy', dmg);
             
             if(eCard.hp <= 0) {
+                // --- L'ENNEMI EST K.O ---
                 eCard.hp = 0;
                 log.innerText = "L'ennemi est K.O !";
-                eIdx++;
-                updateField(pCard, eTeam[eIdx], pTeam.slice(pIdx+1), eTeam.slice(eIdx+1));
+                
+                const enemyEl = document.getElementById('enemy-fighter');
+                
+                // 1. Disparition
+                enemyEl.style.transition = "opacity 0.4s ease, transform 0.4s ease";
+                enemyEl.style.opacity = "0";
+                enemyEl.style.transform = "scale(0.8)";
+                
+                // 2. Attente puis Changement
+                setTimeout(() => {
+                    eIdx++; // On passe officiellement à l'ennemi suivant
+                    
+                    // On met à jour l'affichage avec le NOUVEL index
+                    updateField(pTeam[pIdx], eTeam[eIdx], pTeam.slice(pIdx+1), eTeam.slice(eIdx+1));
+                    
+                    // Si un ennemi existe encore, on le fait réapparaître
+                    if(eTeam[eIdx]) {
+                        enemyEl.style.opacity = "1";
+                        enemyEl.style.transform = "scale(1)";
+                    } else {
+                        // Fin du combat gagné (sera géré au prochain tour de boucle ou fin immédiate)
+                        clearInterval(battleInterval);
+                        setTimeout(() => endBattle(true), 500);
+                    }
+                }, 400); // Doit correspondre au temps de transition (0.4s)
+
             } else {
+                // Ennemi vivant : mise à jour simple barre de vie
                 updateField(pCard, eCard, pTeam.slice(pIdx+1), eTeam.slice(eIdx+1));
             }
         }, 300);
 
-        // --- TOUR DE L'ENNEMI (Si vivant) ---
-        if(eCard.hp > 0) {
-            setTimeout(() => {
+        // --- 2. TOUR DE L'ENNEMI (Seulement s'il n'est pas mort juste avant) ---
+        // On met un délai pour que l'attaque ennemie ne parte pas si il vient de mourir
+        setTimeout(() => {
+            // On revérifie si l'ennemi actuel est vivant (hp > 0) ET si le joueur est toujours là
+            // Important : on réutilise eTeam[eIdx] pour vérifier l'état actuel après l'attaque du joueur
+            const currentEnemy = eTeam[eIdx];
+            const currentPlayer = pTeam[pIdx];
+
+            if(currentEnemy && currentEnemy.hp > 0 && currentPlayer) {
+                
                 animateAttack('enemy');
+                
                 setTimeout(() => {
-                    const dmg = Math.floor(eCard.atk * (0.8 + Math.random() * 0.4));
-                    pCard.hp -= dmg;
+                    const dmg = Math.floor(currentEnemy.atk * (0.8 + Math.random() * 0.4));
+                    currentPlayer.hp -= dmg;
                     showDamage('player', dmg);
                     
-                    if(pCard.hp <= 0) {
-                        pCard.hp = 0;
+                    if(currentPlayer.hp <= 0) {
+                        // --- VOTRE CARTE EST K.O ---
+                        currentPlayer.hp = 0;
                         log.innerText = "Votre carte est K.O !";
-                        pIdx++;
-                        updateField(pTeam[pIdx], eCard, pTeam.slice(pIdx+1), eTeam.slice(eIdx+1));
+                        
+                        const playerEl = document.getElementById('player-fighter');
+
+                        // 1. Disparition
+                        playerEl.style.transition = "opacity 0.4s ease, transform 0.4s ease";
+                        playerEl.style.opacity = "0";
+                        playerEl.style.transform = "scale(0.8)";
+
+                        // 2. Attente puis Changement
+                        setTimeout(() => {
+                            pIdx++; // On passe à votre carte suivante
+
+                            // Mise à jour avec le NOUVEL index
+                            updateField(pTeam[pIdx], eTeam[eIdx], pTeam.slice(pIdx+1), eTeam.slice(eIdx+1));
+
+                            if(pTeam[pIdx]) {
+                                playerEl.style.opacity = "1";
+                                playerEl.style.transform = "scale(1)";
+                            } else {
+                                // Fin du combat perdu
+                                clearInterval(battleInterval);
+                                setTimeout(() => endBattle(false), 500);
+                            }
+                        }, 400);
+
                     } else {
-                        updateField(pCard, eCard, pTeam.slice(pIdx+1), eTeam.slice(eIdx+1));
+                        // Joueur vivant : mise à jour simple
+                        updateField(currentPlayer, currentEnemy, pTeam.slice(pIdx+1), eTeam.slice(eIdx+1));
                     }
                 }, 300);
-            }, 1000);
-        }
+            }
+        }, 1200); // L'attaque ennemie part 1.2s après le début du tour
 
-    }, 2500); // Tour toutes les 2.5s
+    }, 2800); // On allonge un peu le tour (2.8s) pour laisser le temps aux animations
 }
 
 function updateField(pActive, eActive, pReserve, eReserve) {
@@ -285,30 +403,52 @@ function endBattle(victory) {
         title.innerText = "VICTOIRE !";
         title.style.color = "#10b981";
         
-        // REWARDS
-        let money = 150 + (currentLeagueIdx * 50);
-        let xp = 200;
-        
-        // Update LocalStorage (Money/XP)
-        let currentMoney = parseInt(localStorage.getItem('userMoney')) || 0;
-        localStorage.setItem('userMoney', currentMoney + money);
-        
-        let currentXP = parseInt(localStorage.getItem('userXP')) || 0;
-        localStorage.setItem('userXP', currentXP + xp);
-        
-        rewards.innerHTML = `<p>+${xp} XP</p><p>+${money} Crédits</p>`;
-        
-        // Rank Up Chance
-        if(currentLeagueIdx < LEAGUES.length - 1) {
-            currentLeagueIdx++;
-            localStorage.setItem('arenaLeague', currentLeagueIdx);
-            rewards.innerHTML += `<p style="color:gold; font-weight:bold; margin-top:10px;">PROMOTION : ${LEAGUES[currentLeagueIdx]} !</p>`;
+        // --- LOGIQUE SPÉCIALE ARÈNE ---
+        if (gameMode === 'gym') {
+            // 1. Récupérer les badges actuels
+            let currentBadges = JSON.parse(localStorage.getItem('adventureBadges')) || [];
+            
+            // 2. Ajouter le nouveau si on ne l'a pas déjà
+            if (!currentBadges.includes(gymBadgeId)) {
+                currentBadges.push(gymBadgeId);
+                localStorage.setItem('adventureBadges', JSON.stringify(currentBadges));
+                
+                rewards.innerHTML = `
+                    <p style="font-size: 24px;">🏅 BADGE OBTENU !</p>
+                    <p style="color:var(--text-muted)">Le champion ${gymMaster} vous reconnait.</p>
+                `;
+            } else {
+                rewards.innerHTML = `<p>Vous aviez déjà ce badge, mais belle victoire !</p>`;
+            }
+            
+            // Bouton pour fermer la fenêtre et revenir à l'aventure
+            const btn = document.querySelector('.result-box button');
+            btn.innerText = "RETOURNER À L'AVENTURE";
+            btn.onclick = () => window.close();
+            
+        } else {
+            // --- LOGIQUE CLASSIQUE (COLISÉE) ---
+            let money = 150 + (currentLeagueIdx * 50);
+            let xp = 200;
+            localStorage.setItem('userMoney', (parseInt(localStorage.getItem('userMoney'))||0) + money);
+            rewards.innerHTML = `<p>+${xp} XP</p><p>+${money} Crédits</p>`;
+            
+            // Remettre le bouton normal
+            const btn = document.querySelector('.result-box button');
+            btn.innerText = "CONTINUER";
+            btn.onclick = () => returnToLobby();
         }
         
     } else {
         title.innerText = "DÉFAITE...";
         title.style.color = "#ef4444";
-        rewards.innerHTML = `<p>Entraînez-vous et réessayez.</p>`;
+        rewards.innerHTML = `<p>Améliorez votre deck et réessayez.</p>`;
+        
+        if (gameMode === 'gym') {
+             const btn = document.querySelector('.result-box button');
+             btn.innerText = "FUIR L'ARÈNE";
+             btn.onclick = () => window.close();
+        }
     }
 }
 

@@ -147,41 +147,37 @@ function openGym(id) {
 function closeGym() {
     document.getElementById('gym-overlay').classList.add('hidden');
 }
+// DANS ADVENTURE.JS
 
 function startChallenge() {
-    const btn = document.getElementById('btn-challenge');
-    btn.disabled = true;
-    btn.innerText = "COMBAT EN COURS...";
-    
-    // Simulation de combat (Animation simple)
-    setTimeout(() => {
-        // Victoire (puisqu'on a rempli les prérequis de collection, on gagne forcément dans cette version)
-        // On pourrait ajouter du hasard ici.
-        const win = Math.random() > 0.1; // 90% chance si prérequis ok
+    // 1. On prépare les données à envoyer au Colisée
+    const params = new URLSearchParams({
+        mode: 'gym',                                // Dit au Colisée que c'est un combat d'arène
+        master: currentGym.master,                  // Nom du champion (ex: Pierre)
+        badgeId: currentGym.reward.id,              // ID du badge à débloquer (ex: badge_roche)
+        difficulty: currentGym.id                   // Difficulté (1 = Facile, 8 = Dur)
+    });
 
-        if(win) {
-            btn.innerText = "VICTOIRE !";
-            btn.style.background = "#10b981";
-            
-            if(!earnedBadges.includes(currentGym.reward.id)) {
-                earnedBadges.push(currentGym.reward.id);
-                localStorage.setItem('adventureBadges', JSON.stringify(earnedBadges));
-                renderBadges();
-                
-                // Effet confetti simple
-                document.body.style.animation = "shake 0.5s";
-                setTimeout(() => alert(`Vous avez obtenu : ${currentGym.reward.text}`), 500);
-            }
-            // Update visuel map
-            initMap();
-        } else {
-            btn.innerText = "DÉFAITE...";
-            btn.style.background = "#ef4444";
-            document.getElementById('challenge-msg').innerText = "Le champion a eu de la chance... Réessayez !";
-            setTimeout(() => { btn.disabled = false; btn.innerText = "RÉESSAYER"; }, 2000);
-        }
-    }, 1500);
+    // 2. On ouvre le Colisée dans un nouvel onglet avec ces paramètres
+    window.open(`colosseum.html?${params.toString()}`, '_blank');
+    
+    // 3. On ferme la modale d'arène sur la carte
+    closeGym();
 }
+
+// AJOUTE CECI JUSTE APRÈS LA FONCTION startChallenge (ou à la fin du fichier)
+// Cela permet de rafraichir la carte automatiquement quand tu gagnes le badge dans l'autre onglet !
+window.addEventListener('storage', (e) => {
+    if(e.key === 'adventureBadges') {
+        // On recharge la liste des badges
+        earnedBadges = JSON.parse(localStorage.getItem('adventureBadges')) || [];
+        // On met à jour l'affichage des badges en haut
+        renderBadges();
+        // On met à jour les cadenas sur la carte
+        initMap(); 
+        console.log("Badge détecté ! Carte mise à jour.");
+    }
+});
 
 function renderBadges() {
     const container = document.getElementById('badges-container');
